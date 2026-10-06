@@ -1,0 +1,126 @@
+{
+  "suite": "PM-BI-X3DH-1",
+  "status": "ACTIVE",
+  "origin": "python reference model; see IMPLEMENTATION_NOTES.md",
+  "test_only_keys_warning": "ALL private keys in this file are TEST-ONLY, derived from SHA-256('PM-TEST-ONLY-KEY:'+name). Never use for real keys.",
+  "labels": {
+    "X3DH_SALT": {
+      "ascii": "PM-BI-X3DH-1-HKDF-SALT-v1",
+      "hex": "504d2d42492d583344482d312d484b44462d53414c542d7631",
+      "length": 25
+    },
+    "X3DH_INFO": {
+      "ascii": "PM-BI-X3DH-1-SESSION-KEY-v1",
+      "hex": "504d2d42492d583344482d312d53455353494f4e2d4b45592d7631",
+      "length": 27
+    },
+    "DR_ROOT_INFO": {
+      "ascii": "PM-DR-RATCHET-ROOT-v1",
+      "hex": "504d2d44522d524154434845542d524f4f542d7631",
+      "length": 21
+    },
+    "DR_CHAIN_INFO": {
+      "ascii": "PM-DR-RATCHET-CHAIN-v1",
+      "hex": "504d2d44522d524154434845542d434841494e2d7631",
+      "length": 22
+    },
+    "MEDIA_NONCE_SALT": {
+      "ascii": "PM-V1-MEDIA-NONCE-SALT-v1",
+      "hex": "504d2d56312d4d454449412d4e4f4e43452d53414c542d7631",
+      "length": 25
+    },
+    "MEDIA_NONCE_INFO": {
+      "ascii": "PM-V1-MEDIA-NONCE-EXPAND-v1",
+      "hex": "504d2d56312d4d454449412d4e4f4e43452d455850414e442d7631",
+      "length": 27
+    },
+    "DH_BIND": {
+      "ascii": "PM-V1-DH-BIND",
+      "hex": "504d2d56312d44482d42494e44",
+      "length": 13
+    },
+    "MSG_AAD": {
+      "ascii": "PM-V1-MSG-AAD",
+      "hex": "504d2d56312d4d53472d414144",
+      "length": 13
+    }
+  },
+  "cases": [
+    {
+      "id": "with_opk",
+      "inputs": {
+        "epoch_a": 1,
+        "epoch_b": 3,
+        "recipient_spk_id": 7,
+        "recipient_opk_id": 42,
+        "ik_a_priv": "5cc97f627ef6252c05f2ffd3c9b40f9deb700f5b700e6bdf8efcc935ee69f25d",
+        "ek_a_priv": "a8827b90ee0062d452131b35c6cd45e214815328ca6f87fbca672d6c0d7a3ead",
+        "ik_b_priv": "5661ce98957286382350195f8a7fab941f51fd623836cd2973f153157efb21d3",
+        "spk_b_priv": "4b83483477ede3bdaea6ce8157d4e955227fdcf705b1e8fc0272ccfaef2afc76",
+        "ik_a_pub": "ff44ae6f2ad5587497f02cb646557ec1233b8c942e973bf681bb288b0caf654b",
+        "ek_a_pub": "b35c82fad6fbae99c85d7d579cfa45397517401172cc440f1c4818f7f670760e",
+        "ik_b_pub": "ad1a23546cf69b4cebd1071b4bee7e484c4b3120645602552f2b0929cac3d904",
+        "spk_b_pub": "ec8c415e81fc6095efe84f8c418d7387acea1cd8faad6f48dc2d7f486c9ecb57",
+        "opk_b_priv": "f00a26d0ac727ed513aed9ee172507ec58d15e52f06a4b60900306754e682664",
+        "opk_b_pub": "bd2260619020c6ac69df91d28ea4f5f99cb7279abf3f380a678615adbaca9936"
+      },
+      "derived": {
+        "dh1": "f0ac47a4eec98b8108e60503dd4eda781df0e4005cf616c9f7ae25124011f55d",
+        "dh2": "3825cfa549168835c630e793baacaad2bb5ab8105973b535d45ceb50cff24c0e",
+        "dh3": "0f97f0e11a56c143a5dd50e894f4bf1981a0e94eb24eb6b008fe5b31e016051e",
+        "dh4": "9d2c68ca139c82263591a4054b1d31785b9a0b957718151c3c32d944d0371a41",
+        "ikm": "f0ac47a4eec98b8108e60503dd4eda781df0e4005cf616c9f7ae25124011f55d3825cfa549168835c630e793baacaad2bb5ab8105973b535d45ceb50cff24c0e0f97f0e11a56c143a5dd50e894f4bf1981a0e94eb24eb6b008fe5b31e016051e9d2c68ca139c82263591a4054b1d31785b9a0b957718151c3c32d944d0371a41",
+        "ikm_length": 128,
+        "prk": "80f784e7a44952dc08299e201a985943990e1a6d9918ff852790c21c40d14319",
+        "context": "ff44ae6f2ad5587497f02cb646557ec1233b8c942e973bf681bb288b0caf654bad1a23546cf69b4cebd1071b4bee7e484c4b3120645602552f2b0929cac3d9040000000100000003",
+        "context_length": 72,
+        "sk": "0e6f993119f6392e62fa3cb442abd2fa4cbb78aec769e5112134244428f5cac7"
+      }
+    },
+    {
+      "id": "without_opk",
+      "inputs": {
+        "epoch_a": 1,
+        "epoch_b": 3,
+        "recipient_spk_id": 7,
+        "ik_a_priv": "5cc97f627ef6252c05f2ffd3c9b40f9deb700f5b700e6bdf8efcc935ee69f25d",
+        "ek_a_priv": "a8827b90ee0062d452131b35c6cd45e214815328ca6f87fbca672d6c0d7a3ead",
+        "ik_b_priv": "5661ce98957286382350195f8a7fab941f51fd623836cd2973f153157efb21d3",
+        "spk_b_priv": "4b83483477ede3bdaea6ce8157d4e955227fdcf705b1e8fc0272ccfaef2afc76",
+        "ik_a_pub": "ff44ae6f2ad5587497f02cb646557ec1233b8c942e973bf681bb288b0caf654b",
+        "ek_a_pub": "b35c82fad6fbae99c85d7d579cfa45397517401172cc440f1c4818f7f670760e",
+        "ik_b_pub": "ad1a23546cf69b4cebd1071b4bee7e484c4b3120645602552f2b0929cac3d904",
+        "spk_b_pub": "ec8c415e81fc6095efe84f8c418d7387acea1cd8faad6f48dc2d7f486c9ecb57"
+      },
+      "derived": {
+        "dh1": "f0ac47a4eec98b8108e60503dd4eda781df0e4005cf616c9f7ae25124011f55d",
+        "dh2": "3825cfa549168835c630e793baacaad2bb5ab8105973b535d45ceb50cff24c0e",
+        "dh3": "0f97f0e11a56c143a5dd50e894f4bf1981a0e94eb24eb6b008fe5b31e016051e",
+        "ikm": "f0ac47a4eec98b8108e60503dd4eda781df0e4005cf616c9f7ae25124011f55d3825cfa549168835c630e793baacaad2bb5ab8105973b535d45ceb50cff24c0e0f97f0e11a56c143a5dd50e894f4bf1981a0e94eb24eb6b008fe5b31e016051e",
+        "ikm_length": 96,
+        "prk": "78473f7cf08fc8f059ef539da80d9d06ac45f489b6542168143562ae36c737af",
+        "context": "ff44ae6f2ad5587497f02cb646557ec1233b8c942e973bf681bb288b0caf654bad1a23546cf69b4cebd1071b4bee7e484c4b3120645602552f2b0929cac3d9040000000100000003",
+        "context_length": 72,
+        "sk": "24561460e387243c21023804a80b5b91c4ea09665365367ff2fb7c9a0ac1b63f"
+      }
+    }
+  ],
+  "cert_dh_transcript": {
+    "account_id": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+    "device_id": "b0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+    "ddhk_pub": "ff44ae6f2ad5587497f02cb646557ec1233b8c942e973bf681bb288b0caf654b",
+    "timestamp": 1760000000,
+    "transcript_hex": "504d2d56312d44482d42494e44a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfff44ae6f2ad5587497f02cb646557ec1233b8c942e973bf681bb288b0caf654b0000000068e77800",
+    "transcript_length": 85,
+    "transcript_sha256": "93e294fa3b321ade772eae67ff940debca890637114ec6030e7e0ad666f2c9a0",
+    "signer": "sender device DSK (Ed25519)",
+    "signature_scheme": "Ed25519Sign(DSK_priv, transcript)",
+    "dsk_seed_hex": "5e7765d17e72fc9a3b9327fc3031cc7346da0e0b3d6c1b99f2f2a7b63a296cf4",
+    "dsk_pub_hex": "feaeb507c364e8c3bf54aacde0bfc85f0a027bfdac7535e69b1f551d93ce7760",
+    "signature_hex": "995e07b785c56f765c3908dc16923f010a5cd6953a2da245c07e1b4fea5d326e49646f004db2dd583618d9f5f15b133127fbb47073b7e4684ebaf9e705a8e80d",
+    "note": "Cert_dh = Ed25519Sign(DSK_priv, transcript). PrekeyHandshakeHeader carries the timestamp (field 6) needed to rebuild the exact transcript."
+  },
+  "assumptions": [
+    "Epoch_A = sender (initiator) account epoch, Epoch_B = recipient account epoch; 4-byte big-endian, in that order in Context."
+  ]
+}

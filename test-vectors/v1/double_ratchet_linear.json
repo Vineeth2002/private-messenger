@@ -1,0 +1,152 @@
+{
+  "suite": "PM-DR-LINEAR",
+  "status": "ACTIVE",
+  "origin": "python reference model",
+  "test_only_keys_warning": "ALL private keys in this file are TEST-ONLY, derived from SHA-256('PM-TEST-ONLY-KEY:'+name). Never use for real keys.",
+  "labels": {
+    "X3DH_SALT": {
+      "ascii": "PM-BI-X3DH-1-HKDF-SALT-v1",
+      "hex": "504d2d42492d583344482d312d484b44462d53414c542d7631",
+      "length": 25
+    },
+    "X3DH_INFO": {
+      "ascii": "PM-BI-X3DH-1-SESSION-KEY-v1",
+      "hex": "504d2d42492d583344482d312d53455353494f4e2d4b45592d7631",
+      "length": 27
+    },
+    "DR_ROOT_INFO": {
+      "ascii": "PM-DR-RATCHET-ROOT-v1",
+      "hex": "504d2d44522d524154434845542d524f4f542d7631",
+      "length": 21
+    },
+    "DR_CHAIN_INFO": {
+      "ascii": "PM-DR-RATCHET-CHAIN-v1",
+      "hex": "504d2d44522d524154434845542d434841494e2d7631",
+      "length": 22
+    },
+    "MEDIA_NONCE_SALT": {
+      "ascii": "PM-V1-MEDIA-NONCE-SALT-v1",
+      "hex": "504d2d56312d4d454449412d4e4f4e43452d53414c542d7631",
+      "length": 25
+    },
+    "MEDIA_NONCE_INFO": {
+      "ascii": "PM-V1-MEDIA-NONCE-EXPAND-v1",
+      "hex": "504d2d56312d4d454449412d4e4f4e43452d455850414e442d7631",
+      "length": 27
+    },
+    "DH_BIND": {
+      "ascii": "PM-V1-DH-BIND",
+      "hex": "504d2d56312d44482d42494e44",
+      "length": 13
+    },
+    "MSG_AAD": {
+      "ascii": "PM-V1-MSG-AAD",
+      "hex": "504d2d56312d4d53472d414144",
+      "length": 13
+    }
+  },
+  "kdf_ck_vector": {
+    "ck": "0101010101010101010101010101010101010101010101010101010101010101",
+    "k_msg": "cc6efb872c237f565ee82df42e4cab00098b13710395e3c6d29f2907d69e4f04",
+    "ck_next": "c31d79abaf8f2150ee1cfe3dc732eed02a56f79647909bad055a831cb762e9a2"
+  },
+  "kdf_rk_vector": {
+    "rk": "0202020202020202020202020202020202020202020202020202020202020202",
+    "dh_out": "0303030303030303030303030303030303030303030303030303030303030303",
+    "rk_next": "ce63f15dbdfa0ba2ceaf0edee27051d8651755a3c89f94b5d046f59adf991243",
+    "ck_out": "7542865b4aa153315b49d97d77f33d56f652168402e8c17e4c80f67ffc74ecd4"
+  },
+  "handshake_case": "with_opk",
+  "sk": "0e6f993119f6392e62fa3cb442abd2fa4cbb78aec769e5112134244428f5cac7",
+  "alice": {
+    "dhs_a0_priv": "35331c915e68b2627867eebac49535ea8ed5e57ae3f9246985d57bcfc54b5b6f",
+    "dhs_a0_pub": "f1290308f1f467910441c223f8b226733e515b3f9f111e921a3788f5ee43c155",
+    "rk_a": "d3277cdb324451aa32d68401b82e0a1093b3710354d2b123766b615d84715e31",
+    "ck_s_initial": "51a164ac2a1e8832f591b63c9fe38ba2e730eb53bb21fddb09b51d4e73276ab0",
+    "k_msg_0": "990b074b7ac0a46fa8ae5360080e4e1253f7c21cc0e0e453ff209a4ec61b9c69",
+    "ck_s_after_msg0": "247a310183fb4f62ea92febf0e36a7bfad7eba2a73ac7aef419f2eb0aa18e53e",
+    "ns_after": 1
+  },
+  "message_0": {
+    "plaintext_hex": "68656c6c6f20706d",
+    "nonce_hex": "000000000000000000000000",
+    "aad_inputs": {
+      "protocol_version": 1,
+      "envelope_id": "101112131415161718191a1b1c1d1e1f",
+      "sender_device_id": "b0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+      "recipient_device_id": "303132333435363738393a3b3c3d3e3f",
+      "account_epoch": 3,
+      "prekey_flag": 1,
+      "ratchet_header_hex": "ab0150a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0201035820feaeb507c364e8c3bf54aacde0bfc85f0a027bfdac7535e69b1f551d93ce7760045820ff44ae6f2ad5587497f02cb646557ec1233b8c942e973bf681bb288b0caf654b055840995e07b785c56f765c3908dc16923f010a5cd6953a2da245c07e1b4fea5d326e49646f004db2dd583618d9f5f15b133127fbb47073b7e4684ebaf9e705a8e80d061a68e77800075820b35c82fad6fbae99c85d7d579cfa45397517401172cc440f1c4818f7f670760e080709182a0a5820f1290308f1f467910441c223f8b226733e515b3f9f111e921a3788f5ee43c1550b00"
+    },
+    "aad_hex": "504d2d56312d4d53472d41414401101112131415161718191a1b1c1d1e1fb0b1b2b3b4b5b6b7b8b9babbbcbdbebf303132333435363738393a3b3c3d3e3f0000000301ab0150a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0201035820feaeb507c364e8c3bf54aacde0bfc85f0a027bfdac7535e69b1f551d93ce7760045820ff44ae6f2ad5587497f02cb646557ec1233b8c942e973bf681bb288b0caf654b055840995e07b785c56f765c3908dc16923f010a5cd6953a2da245c07e1b4fea5d326e49646f004db2dd583618d9f5f15b133127fbb47073b7e4684ebaf9e705a8e80d061a68e77800075820b35c82fad6fbae99c85d7d579cfa45397517401172cc440f1c4818f7f670760e080709182a0a5820f1290308f1f467910441c223f8b226733e515b3f9f111e921a3788f5ee43c1550b00",
+    "ciphertext_with_tag_hex": "f03267f36336be2ddd91cf73a7c4e092052d1663e69dd511",
+    "prekey_handshake_header": {
+      "note": "Complete frozen PrekeyHandshakeHeader (PM-CBOR-2026 map, fields 1-11). Field 9 is present because the with_opk case is used.",
+      "fields": {
+        "1_sender_account_id": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+        "2_sender_account_epoch": 1,
+        "3_sender_dsk_pub": "feaeb507c364e8c3bf54aacde0bfc85f0a027bfdac7535e69b1f551d93ce7760",
+        "4_sender_ddhk_pub": "ff44ae6f2ad5587497f02cb646557ec1233b8c942e973bf681bb288b0caf654b",
+        "5_sender_cert_dh": "995e07b785c56f765c3908dc16923f010a5cd6953a2da245c07e1b4fea5d326e49646f004db2dd583618d9f5f15b133127fbb47073b7e4684ebaf9e705a8e80d",
+        "6_sender_cert_dh_timestamp": 1760000000,
+        "7_sender_ephemeral_pub": "b35c82fad6fbae99c85d7d579cfa45397517401172cc440f1c4818f7f670760e",
+        "8_recipient_spk_id": 7,
+        "9_recipient_opk_id": 42,
+        "10_initial_ratchet_pub": "f1290308f1f467910441c223f8b226733e515b3f9f111e921a3788f5ee43c155",
+        "11_sequence_number": 0
+      }
+    }
+  },
+  "bob": {
+    "pre_ingestion_state": {
+      "rk_b": "0e6f993119f6392e62fa3cb442abd2fa4cbb78aec769e5112134244428f5cac7",
+      "dhs_b": "spk_b",
+      "dhr_b": null,
+      "ck_s": null,
+      "ck_r": null,
+      "ns": 0,
+      "nr": 0,
+      "pn": 0
+    },
+    "dhs_b1_priv": "2e1a63255d9051246cb3761b47ad613178934fe652bada76425ef6260b55cfd1",
+    "dhs_b1_pub": "8dd70537c92edb2333c8dd56fa60a43649c50d2ea41041e8786678888161047d",
+    "rk_temp": "d3277cdb324451aa32d68401b82e0a1093b3710354d2b123766b615d84715e31",
+    "ck_r_before_decrypt": "51a164ac2a1e8832f591b63c9fe38ba2e730eb53bb21fddb09b51d4e73276ab0",
+    "ck_r_after": "247a310183fb4f62ea92febf0e36a7bfad7eba2a73ac7aef419f2eb0aa18e53e",
+    "rk_b_final": "b2ab47599f4cba116d1ed0bc1ac2ed6e8fc9d3a705f65c94cf8562517a855434",
+    "ck_s_final": "f1ee346637d461f8a8987e678336c84722f0fc6811fba467fcd8a34e9b412393",
+    "ns": 0,
+    "nr": 1,
+    "pn": 0
+  },
+  "alice_after_bob_reply": {
+    "rk_a_next": "b2ab47599f4cba116d1ed0bc1ac2ed6e8fc9d3a705f65c94cf8562517a855434",
+    "ck_r": "f1ee346637d461f8a8987e678336c84722f0fc6811fba467fcd8a34e9b412393",
+    "equals_bob_rk_b_final_and_ck_s_final": true
+  },
+  "negative": [
+    {
+      "id": "tampered_ciphertext_tag",
+      "ciphertext_hex": "f03267f36336be2ddd91cf73a7c4e092052d1663e69dd510",
+      "aad_hex": "504d2d56312d4d53472d41414401101112131415161718191a1b1c1d1e1fb0b1b2b3b4b5b6b7b8b9babbbcbdbebf303132333435363738393a3b3c3d3e3f0000000301ab0150a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0201035820feaeb507c364e8c3bf54aacde0bfc85f0a027bfdac7535e69b1f551d93ce7760045820ff44ae6f2ad5587497f02cb646557ec1233b8c942e973bf681bb288b0caf654b055840995e07b785c56f765c3908dc16923f010a5cd6953a2da245c07e1b4fea5d326e49646f004db2dd583618d9f5f15b133127fbb47073b7e4684ebaf9e705a8e80d061a68e77800075820b35c82fad6fbae99c85d7d579cfa45397517401172cc440f1c4818f7f670760e080709182a0a5820f1290308f1f467910441c223f8b226733e515b3f9f111e921a3788f5ee43c1550b00",
+      "expected": "AEAD_AUTH_FAILURE",
+      "expected_state_after": "UNCHANGED: Bob state must equal pre_ingestion_state exactly"
+    },
+    {
+      "id": "tampered_aad_envelope_id",
+      "ciphertext_hex": "f03267f36336be2ddd91cf73a7c4e092052d1663e69dd511",
+      "aad_hex": "504d2d56312d4d53472d41414401111112131415161718191a1b1c1d1e1fb0b1b2b3b4b5b6b7b8b9babbbcbdbebf303132333435363738393a3b3c3d3e3f0000000301ab0150a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0201035820feaeb507c364e8c3bf54aacde0bfc85f0a027bfdac7535e69b1f551d93ce7760045820ff44ae6f2ad5587497f02cb646557ec1233b8c942e973bf681bb288b0caf654b055840995e07b785c56f765c3908dc16923f010a5cd6953a2da245c07e1b4fea5d326e49646f004db2dd583618d9f5f15b133127fbb47073b7e4684ebaf9e705a8e80d061a68e77800075820b35c82fad6fbae99c85d7d579cfa45397517401172cc440f1c4818f7f670760e080709182a0a5820f1290308f1f467910441c223f8b226733e515b3f9f111e921a3788f5ee43c1550b00",
+      "expected": "AEAD_AUTH_FAILURE",
+      "expected_state_after": "UNCHANGED: Bob state must equal pre_ingestion_state exactly"
+    }
+  ],
+  "invariants": [
+    "MessageEnvelope.field_5 == AAD account_epoch == Epoch_B (RECIPIENT account epoch)",
+    "Epoch_A (sender) appears only in the PM-BI-X3DH-1 HKDF Context and in the authenticated PrekeyHandshakeHeader as sender_account_epoch"
+  ],
+  "assumptions": [
+    "uint32/uint64 header fields are encoded as CBOR unsigned integers (minimal form); 'BE' applies to the HKDF Context and AAD only",
+    "sender_device_id (AAD/envelope) equals the Cert_dh DeviceID, because the header has no device-id field"
+  ]
+}

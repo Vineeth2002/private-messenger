@@ -1,0 +1,5 @@
+# Keep LF everywhere: tools/check_vectors.py hashes the vector files byte for byte, and Git for
+# Windows would otherwise convert line endings (core.autocrlf=true) and break the manifest.
+* text=auto eol=lf
+test-vectors/** -text
+*.sh text eol=lf

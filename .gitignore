@@ -1,0 +1,19 @@
+target/
+Cargo.lock.bak
+*.class
+.gradle/
+build/
+local.properties
+.idea/
+xcuserdata/
+DerivedData/
+*.xcuserstate
+__pycache__/
+*.pyc
+parity-out/
+.DS_Store
+# Never commit key material or real recovery phrases.
+*.pem
+*.key
+*.mnemonic
+build-report.txt

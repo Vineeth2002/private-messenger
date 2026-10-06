@@ -1,0 +1,23 @@
+[package]
+name = "pm-crypto-core"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.81"
+publish = false
+description = "Sovereign Private Messenger native crypto core (Phase A: PM-CBOR-2026 + recovery fixture)"
+
+# Exact pins (reproducibility). Upgrades follow docs/DEPENDENCY_UPGRADE_POLICY.md.
+# NOTE: crates for later boundaries (x25519-dalek, chacha20poly1305, UniFFI) are
+# intentionally NOT added yet: Phase B is locked.
+[dependencies]
+thiserror = "=1.0.63"
+zeroize = "=1.8.1"
+sha2 = "=0.10.8"
+hkdf = "=0.12.4"
+pbkdf2 = "=0.12.2"
+bip39 = "=2.0.0"
+unicode-normalization = "=0.1.22"   # must equal the exact version bip39 2.0.0 requires
+ed25519-dalek = { version = "=2.1.1", default-features = false, features = ["std", "zeroize"] }
+
+[dev-dependencies]
+serde_json = "=1.0.127"

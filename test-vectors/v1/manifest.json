@@ -1,0 +1,55 @@
+{
+  "manifest_format": 1,
+  "files": [
+    {
+      "path": "bi_x3dh_handshake.json",
+      "status": "ACTIVE",
+      "sha256": "bbf8653936cb0ae8b52baa965521749b684a75f8c0697328c62905bf93cf4aed"
+    },
+    {
+      "path": "cbor_canonical_codec.json",
+      "status": "ACTIVE",
+      "sha256": "acf158280dfa2908f9bb510aec562c396a79c4cf682ec289dc52f740a6f95607"
+    },
+    {
+      "path": "double_ratchet_linear.json",
+      "status": "ACTIVE",
+      "sha256": "eb03b44329aebe2bc23d4050214594521c84047927ab893e40ec6139527cab35"
+    },
+    {
+      "path": "double_ratchet_reorder.json",
+      "status": "PLACEHOLDER_LOCKED",
+      "sha256": "16a4edf7898199d9ec7529fc6c19e124748a92c1133bc6e316561e1e5128a77d"
+    },
+    {
+      "path": "ed25519_baseline.json",
+      "status": "ACTIVE",
+      "sha256": "90ba4b7bf05586854faf6cae692e33c3e6878d3e52c28a01f5f12009daadd3b5"
+    },
+    {
+      "path": "equivocation_cases.json",
+      "status": "PLACEHOLDER_LOCKED",
+      "sha256": "ce9578bdc8508c40dbbfe480df565b245ac418b44759f09e8d05bb3d1143656c"
+    },
+    {
+      "path": "hpke_push_vectors.json",
+      "status": "PLACEHOLDER_LOCKED",
+      "sha256": "637596ffe7ef2828818bbf7783e924d12cbe589fe483e24ac0d6737a56e158c9"
+    },
+    {
+      "path": "media_chunk_aead.json",
+      "status": "ACTIVE",
+      "sha256": "8b95fa1aa96552eb113b47a08330c32c0276cebf67929b394d18d3030706daa5"
+    },
+    {
+      "path": "recovery_derivation_fixture.json",
+      "status": "ACTIVE",
+      "sha256": "b34990984b060290b9d1d0eac0aa6944498ba2a6567561e5fdd1151e56d97ad5"
+    },
+    {
+      "path": "transparency_leaf.json",
+      "status": "PLACEHOLDER_LOCKED",
+      "sha256": "f93b3e83d6e4534c57500f08b71e8737054be44159e0d392ddefa95c9b00f043"
+    }
+  ]
+}

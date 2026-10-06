@@ -1,0 +1,6 @@
+{
+  "suite": "PM-PUSH-HPKE",
+  "status": "PLACEHOLDER_LOCKED",
+  "note": "Not populated: the required specification is missing or the dependent boundary is locked (reorder/skipped-key semantics, HPKE push, transparency leaf layout). No vector data is fabricated here.",
+  "vectors": []
+}

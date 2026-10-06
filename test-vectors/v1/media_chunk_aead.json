@@ -1,0 +1,279 @@
+{
+  "suite": "PM-ALLH-AEAD",
+  "status": "ACTIVE",
+  "origin": "python reference model",
+  "labels": {
+    "X3DH_SALT": {
+      "ascii": "PM-BI-X3DH-1-HKDF-SALT-v1",
+      "hex": "504d2d42492d583344482d312d484b44462d53414c542d7631",
+      "length": 25
+    },
+    "X3DH_INFO": {
+      "ascii": "PM-BI-X3DH-1-SESSION-KEY-v1",
+      "hex": "504d2d42492d583344482d312d53455353494f4e2d4b45592d7631",
+      "length": 27
+    },
+    "DR_ROOT_INFO": {
+      "ascii": "PM-DR-RATCHET-ROOT-v1",
+      "hex": "504d2d44522d524154434845542d524f4f542d7631",
+      "length": 21
+    },
+    "DR_CHAIN_INFO": {
+      "ascii": "PM-DR-RATCHET-CHAIN-v1",
+      "hex": "504d2d44522d524154434845542d434841494e2d7631",
+      "length": 22
+    },
+    "MEDIA_NONCE_SALT": {
+      "ascii": "PM-V1-MEDIA-NONCE-SALT-v1",
+      "hex": "504d2d56312d4d454449412d4e4f4e43452d53414c542d7631",
+      "length": 25
+    },
+    "MEDIA_NONCE_INFO": {
+      "ascii": "PM-V1-MEDIA-NONCE-EXPAND-v1",
+      "hex": "504d2d56312d4d454449412d4e4f4e43452d455850414e442d7631",
+      "length": 27
+    },
+    "DH_BIND": {
+      "ascii": "PM-V1-DH-BIND",
+      "hex": "504d2d56312d44482d42494e44",
+      "length": 13
+    },
+    "MSG_AAD": {
+      "ascii": "PM-V1-MSG-AAD",
+      "hex": "504d2d56312d4d53472d414144",
+      "length": 13
+    }
+  },
+  "k_media_hex": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+  "prk_nonce_hex": "04a77c00b1545430546216f0832ea44e820cb1bccae97ff157541c87e9d49c1c",
+  "nonce_salt_hex": "9abfc9ee",
+  "nonces": [
+    {
+      "i": 0,
+      "nonce_hex": "9abfc9ee0000000000000000"
+    },
+    {
+      "i": 1,
+      "nonce_hex": "9abfc9ee0000000000000001"
+    },
+    {
+      "i": 65535,
+      "nonce_hex": "9abfc9ee000000000000ffff"
+    },
+    {
+      "i": 4294967296,
+      "nonce_hex": "9abfc9ee0000000100000000"
+    },
+    {
+      "i": 18446744073709551615,
+      "nonce_hex": "9abfc9eeffffffffffffffff"
+    }
+  ],
+  "allh_buckets": [
+    65536,
+    262144,
+    1048576,
+    5242880,
+    20971520,
+    104857600
+  ],
+  "allh_bucket_selection": "smallest bucket S with S >= L+1 (resolved by the architects)",
+  "allh_max_plaintext_length": 104857599,
+  "allh_framing": [
+    {
+      "plaintext_length": 0,
+      "bucket": 65536,
+      "container_sha256": "854f11162b89b25226c2d1a13a1134a4e64d6c330f6b9e922d573ef96c0a1386",
+      "chunks": 1,
+      "ciphertext_chunk_length": 65552,
+      "plaintext_pattern": "bytes(i % 251) for i in range(L)"
+    },
+    {
+      "plaintext_length": 5,
+      "bucket": 65536,
+      "container_sha256": "665ffd09cdee6f8f4e70707fd57a24e061b63ef6944dd15fa7ccf6ecdf361b1a",
+      "chunks": 1,
+      "ciphertext_chunk_length": 65552,
+      "plaintext_pattern": "bytes(i % 251) for i in range(L)"
+    },
+    {
+      "plaintext_length": 65535,
+      "bucket": 65536,
+      "container_sha256": "deb2b12bc40a2f6092ba224c9d0f9a1e89fe557b741ebcede17d0642c5fdc649",
+      "chunks": 1,
+      "ciphertext_chunk_length": 65552,
+      "plaintext_pattern": "bytes(i % 251) for i in range(L)"
+    },
+    {
+      "plaintext_length": 65536,
+      "bucket": 262144,
+      "container_sha256": "be65a46dcd3a7a0cc2e7f7fe01418d780cce3ceb5a209846cfd6999c2b922486",
+      "chunks": 4,
+      "ciphertext_chunk_length": 65552,
+      "plaintext_pattern": "bytes(i % 251) for i in range(L)"
+    },
+    {
+      "plaintext_length": 104857599,
+      "bucket": 104857600,
+      "container_sha256": "274f67d797b749b77c16affceede0fc3f872d52d10942e4f269b0adca4067374",
+      "chunks": 1600,
+      "ciphertext_chunk_length": 65552,
+      "plaintext_pattern": "bytes(i % 251) for i in range(L)"
+    }
+  ],
+  "allh_validation_structural": [
+    {
+      "id": "minimal_valid",
+      "container_hex": "01028000",
+      "plaintext_length": 2,
+      "expected": "OK"
+    },
+    {
+      "id": "missing_marker",
+      "container_hex": "01020000",
+      "plaintext_length": 2,
+      "expected": "INVALID_MARKER"
+    },
+    {
+      "id": "nonzero_padding",
+      "container_hex": "01028001",
+      "plaintext_length": 2,
+      "expected": "INVALID_PADDING"
+    },
+    {
+      "id": "no_room_for_marker",
+      "container_hex": "0102",
+      "plaintext_length": 2,
+      "expected": "INVALID_LENGTH"
+    }
+  ],
+  "media_chunk_aad": {
+    "structure": "PM-CBOR-2026 map {1:1, 2:media_id (16-byte UUIDv7), 3:chunk_index, 4:total_chunks, 5:unpadded_file_length, 6:padded_container_size}",
+    "assumptions": [
+      "chunk_index is zero-based, matching Nonce_i = NonceSalt || uint64_be(i)",
+      "K_media is used directly as the ChaCha20-Poly1305 key (memo derives only NonceSalt from it)",
+      "final-chunk and chunk-length are implied by total_chunks and padded_container_size (all chunks are 64 KiB)"
+    ]
+  },
+  "chunk_aead_cases": [
+    {
+      "id": "single_chunk",
+      "media_id_hex": "018f2b3c4d5e7abc8def0123456789ab",
+      "plaintext_length": 65535,
+      "bucket": 65536,
+      "total_chunks": 1,
+      "plaintext_pattern": "bytes(i % 251) for i in range(L)",
+      "chunks": [
+        {
+          "index": 0,
+          "aad_hex": "a601010250018f2b3c4d5e7abc8def0123456789ab030004010519ffff061a00010000",
+          "nonce_hex": "9abfc9ee0000000000000000",
+          "ciphertext_length": 65552,
+          "ciphertext_sha256": "9cb46136dabb96d6b7f982c12b5103ef205dc18c8a5bfde46d480ef5b7001a0d",
+          "ciphertext_first32_hex": "26c9b6f53aaafd28f69dd32ba12e8a67f2098c3965b7ee4cada619c6c75aa09b",
+          "tag_hex": "ea2dc32f197c449a07b73fc4acb8eb90"
+        }
+      ]
+    },
+    {
+      "id": "multi_chunk_4",
+      "media_id_hex": "018f2b3c4d5e7abc8def0123456789ab",
+      "plaintext_length": 100000,
+      "bucket": 262144,
+      "total_chunks": 4,
+      "plaintext_pattern": "bytes(i % 251) for i in range(L)",
+      "chunks": [
+        {
+          "index": 0,
+          "aad_hex": "a601010250018f2b3c4d5e7abc8def0123456789ab03000404051a000186a0061a00040000",
+          "nonce_hex": "9abfc9ee0000000000000000",
+          "ciphertext_length": 65552,
+          "ciphertext_sha256": "93cd760dcc3dadc04555e83d193974738d6e14346d9d514a686dc86ea4b8bf20",
+          "ciphertext_first32_hex": "26c9b6f53aaafd28f69dd32ba12e8a67f2098c3965b7ee4cada619c6c75aa09b",
+          "tag_hex": "9e5ee3dc0f1b039cc6dd2a7cae4e00f0"
+        },
+        {
+          "index": 1,
+          "aad_hex": "a601010250018f2b3c4d5e7abc8def0123456789ab03010404051a000186a0061a00040000",
+          "nonce_hex": "9abfc9ee0000000000000001",
+          "ciphertext_length": 65552,
+          "ciphertext_sha256": "c8b2c9cae7c931905caae188cbb8a390775d03c734d66fd8d31cb6d26f2d2a9a",
+          "ciphertext_first32_hex": "5cfa8a1a220dcdf240951bc55454d61b2d8d2a6b0797b4b93b55337b75f40260",
+          "tag_hex": "1540de95d41e76ddefb1e2b982e1036a"
+        },
+        {
+          "index": 2,
+          "aad_hex": "a601010250018f2b3c4d5e7abc8def0123456789ab03020404051a000186a0061a00040000",
+          "nonce_hex": "9abfc9ee0000000000000002",
+          "ciphertext_length": 65552,
+          "ciphertext_sha256": "0c5b3cf939179fe2d8e225851a38097ab7ea6d3f6ac1e761d37c27485be44ad7",
+          "ciphertext_first32_hex": "7ed8aa2316af18e4eb9be19eea5a44318cc99b6dc1ada9f4e63fc4ffba2acbc9",
+          "tag_hex": "34aa0186efa47ad3e92361ccc74f9882"
+        },
+        {
+          "index": 3,
+          "aad_hex": "a601010250018f2b3c4d5e7abc8def0123456789ab03030404051a000186a0061a00040000",
+          "nonce_hex": "9abfc9ee0000000000000003",
+          "ciphertext_length": 65552,
+          "ciphertext_sha256": "a30ea8338e3be789d6a5e58b99cb78b3b2f9032c2e8ca0be3dfc0fa635f34251",
+          "ciphertext_first32_hex": "4bd9c21c2a988c6c443755c8707c5c7fab63405a296f0f673b37cd93b2c76671",
+          "tag_hex": "0ac7d645eade687e3e0639442d00657c"
+        }
+      ]
+    }
+  ],
+  "chunk_aead_negative": [
+    {
+      "id": "wrong_chunk_index_in_aad",
+      "case": "multi_chunk_4",
+      "ciphertext_of_chunk": 1,
+      "nonce_index": 1,
+      "aad_fields": {
+        "unpadded_file_length": 100000,
+        "padded_container_size": 262144,
+        "chunk_index": 2,
+        "total_chunks": 4
+      },
+      "expected": "AEAD_AUTH_FAILURE"
+    },
+    {
+      "id": "wrong_total_chunks_in_aad",
+      "case": "multi_chunk_4",
+      "ciphertext_of_chunk": 1,
+      "nonce_index": 1,
+      "aad_fields": {
+        "unpadded_file_length": 100000,
+        "padded_container_size": 262144,
+        "chunk_index": 1,
+        "total_chunks": 5
+      },
+      "expected": "AEAD_AUTH_FAILURE"
+    },
+    {
+      "id": "reordered_chunk_presented_as_2",
+      "case": "multi_chunk_4",
+      "ciphertext_of_chunk": 1,
+      "nonce_index": 2,
+      "aad_fields": {
+        "unpadded_file_length": 100000,
+        "padded_container_size": 262144,
+        "chunk_index": 2,
+        "total_chunks": 4
+      },
+      "expected": "AEAD_AUTH_FAILURE"
+    },
+    {
+      "id": "wrong_unpadded_length_in_aad",
+      "case": "multi_chunk_4",
+      "ciphertext_of_chunk": 1,
+      "nonce_index": 1,
+      "aad_fields": {
+        "unpadded_file_length": 100001,
+        "padded_container_size": 262144,
+        "chunk_index": 1,
+        "total_chunks": 4
+      },
+      "expected": "AEAD_AUTH_FAILURE"
+    }
+  ]
+}
