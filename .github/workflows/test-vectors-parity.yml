@@ -1,0 +1,64 @@
+name: test-vectors-parity
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  RUST_TOOLCHAIN: "1.81.0"   # keep in sync with rust-toolchain.toml
+  GO_VERSION: "1.22.6"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  vectors:
+    name: shared vector validation (independent Python reference)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ env.PYTHON_VERSION }}" }
+      - run: python -m pip install cryptography
+      - name: Vector files are reproducible from the generator
+        run: |
+          python tools/gen_vectors.py
+          git diff --exit-code -- test-vectors
+      - run: python tools/check_vectors.py
+
+  rust:
+    name: rust PM-CBOR-2026 + recovery vectors
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.81.0
+      # Cargo.lock is committed; --locked fails the build if it is out of date.
+      - run: cargo test --locked --manifest-path native/crypto-core/Cargo.toml
+      - run: mkdir -p parity-out && PM_PARITY_OUT="$PWD/parity-out/rust.json" cargo test --locked --manifest-path native/crypto-core/Cargo.toml --test cbor_vectors
+      - uses: actions/upload-artifact@v4
+        with: { name: parity-rust, path: parity-out/rust.json }
+
+  go:
+    name: go PM-CBOR-2026 vectors
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "${{ env.GO_VERSION }}" }
+      # go.sum is committed; verify the downloaded modules against it.
+      - run: cd services/gateway && go mod download && go mod verify
+      - run: cd services/gateway && go vet ./... && go test ./...
+      - run: mkdir -p parity-out && cd services/gateway && PM_PARITY_OUT="$GITHUB_WORKSPACE/parity-out/go.json" go test ./internal/cbor -run TestSharedVectors -count=1
+      - uses: actions/upload-artifact@v4
+        with: { name: parity-go, path: parity-out/go.json }
+
+  parity:
+    name: Rust == Go == vector file (fail on any mismatch)
+    needs: [vectors, rust, go]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: parity-out }
+      - run: python3 tools/compare_parity.py parity-out/parity-rust/rust.json parity-out/parity-go/go.json
