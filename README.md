@@ -37,4 +37,3 @@ bash tools/run_all.sh                                              # everything 
 ```
 Rust/Go parity (`parity OK: 101 vectors identical across Rust, Go and the vector file`) is documented step by step in `docs/LOCAL_SETUP_WINDOWS.md`.
 Gate record: `docs/PHASE_B_GATE.md`. Decisions, assumptions and the few open items: `docs/IMPLEMENTATION_NOTES.md`.
-"# private-messenger" 
