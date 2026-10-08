@@ -7,8 +7,8 @@ publish = false
 description = "Sovereign Private Messenger native crypto core (Phase A: PM-CBOR-2026 + recovery fixture)"
 
 # Exact pins (reproducibility). Upgrades follow docs/DEPENDENCY_UPGRADE_POLICY.md.
-# NOTE: x25519-dalek and hmac were added for the PM-BI-X3DH-1 boundary. Crates for later
-# boundaries (chacha20poly1305, UniFFI) are intentionally NOT added yet.
+# NOTE: x25519-dalek and hmac were added for the PM-BI-X3DH-1 boundary.
+# chacha20poly1305 and rand_core are pinned for the frozen Double Ratchet Message 0 boundary.
 [dependencies]
 thiserror = "=1.0.63"
 zeroize = "=1.8.1"
@@ -20,6 +20,8 @@ unicode-normalization = "=0.1.22"   # must equal the exact version bip39 2.0.0 r
 ed25519-dalek = { version = "=2.1.1", default-features = false, features = ["std", "zeroize"] }
 x25519-dalek = { version = "=2.0.1", default-features = false, features = ["static_secrets", "zeroize"] }
 hmac = "=0.12.1"
+chacha20poly1305 = "=0.10.1"
+rand_core = "=0.6.4"
 
 [dev-dependencies]
 serde_json = "=1.0.127"
