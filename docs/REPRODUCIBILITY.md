@@ -7,7 +7,7 @@ Pins come from the architecture record. They are reproducibility pins, NOT claim
 | Rust | 1.81.0 | `rust-toolchain.toml`, CI | yes: `cargo 1.81.0 (2dbb1af80 2024-08-20)` on Windows |
 | Go | 1.22.6 | `services/gateway/go.mod`, CI | yes: `go1.22.6 windows/amd64` |
 | fxamacker/cbor | v2.7.0 (+ x448/float16 v0.8.4) | `go.mod`, `go.sum` (committed) | yes: build, vet, tests |
-| Rust crates | exact `=` pins; full tree in `Cargo.lock` (49 packages, committed) | `native/crypto-core/Cargo.toml` | yes: 13 tests |
+| Rust crates | exact `=` pins; full tree in `Cargo.lock` (51 packages, committed) | `native/crypto-core/Cargo.toml` | yes: 13 tests |
 | Python tooling | 3.9 or newer (CI uses 3.12) + `cryptography` | `tools/` | yes: Linux Python 3.12 + cryptography 46.0.6, Windows Python 3.14 + cryptography 50.0.2 |
 | PostgreSQL | 16 | `services/gateway/migrations/0001_init.sql` | NO: never executed |
 | Android (AGP 8.5.2, Kotlin 1.9.24, Compose BOM 2024.06.00) | skeleton | `apps/android` | NO: never built |
