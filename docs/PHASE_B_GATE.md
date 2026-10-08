@@ -1,6 +1,6 @@
 # Phase B Gate: PM-BI-X3DH-1 production implementation
 
-Status: UNLOCKED on 2026-10-05 (all six criteria met, see below). Not yet started: Rust/Go/Kotlin/Swift implementations of the handshake, Double Ratchet and media encryption are NOT started.
+Status: UNLOCKED on 2026-10-05 (all six criteria met, see below). Progress: the PM-BI-X3DH-1 handshake derivation and Cert_dh are implemented in Rust and verified on a real machine (2026-10-07). NOT started: Double Ratchet, media encryption, push, transparency, and any Go/Kotlin/Swift implementation of the handshake.
 
 Unlock requires ALL of these to be demonstrated by an actual run (record the date and the `build-report.txt`):
 

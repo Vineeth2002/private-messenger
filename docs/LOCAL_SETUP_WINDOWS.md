@@ -95,3 +95,8 @@ The two `git config` values above are placeholders: set your real name and email
 - Do not edit anything under `test-vectors\` by hand; they are generated and hashed.
 
 PM-BI-X3DH-1 implementation starts only after the gate in `docs/PHASE_B_GATE.md` (met on 2026-10-05) and your explicit go-ahead.
+## 7. More problems seen on a real machine
+- A command seems to hang and the screen fills with `~` (Git's pager `less`): press `q`; if the terminal does not respond, close it and open a new one. Prevent it: `git config --global core.pager cat`.
+- A strange file such as `t --locked` appears in `git status`: it was created by typing a command into the pager. Delete it with `del "t --locked"`; never commit it.
+- `git status` shows a workflow or doc file as modified although you did not mean to edit it: opening and saving a file in VS Code can add a trailing blank line. Check with `git diff`, then `git restore <file>`.
+- After adding a Rust dependency, follow `docs/REPRODUCIBILITY.md` ("Adding a dependency"), not a plain `cargo test`.

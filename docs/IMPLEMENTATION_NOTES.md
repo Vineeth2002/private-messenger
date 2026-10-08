@@ -97,3 +97,11 @@ Not written: Rust/Go implementations of X3DH, ratchet and media. The gate is met
    during any real-build fix.
 13. **Baseline completion** (before the first push): README, docs, CI, SQL migration, run scripts and Android/iOS skeletons added to the owner's repository. Status wording updated (Phase B unlocked, not started);
    CI and run scripts now use the committed lockfiles (`--locked`, `go mod verify`); REPRODUCIBILITY.md and LOCAL_SETUP_WINDOWS.md describe the verified Windows path. No code, vector, constant or formula changed.
+14. **First Phase B boundary: PM-BI-X3DH-1 handshake (2026-10-07, commit 395e372)**: `native/crypto-core/src/x3dh.rs` derives the session key SK from both the initiator and the responder side and
+   implements the Cert_dh transcript, signature and fail-closed verification. On the owner's Windows PC it reproduces every value in `bi_x3dh_handshake.json` (DH1-DH4, IKM, PRK, Context, SK, transcript,
+   signature): 16 library tests pass (8 CBOR + 8 X3DH) plus 2 + 3 integration tests, and the Python checker still passes. Two conservative implementation decisions, neither affecting any vector:
+   non-contributory X25519 outputs are rejected, and Cert_dh is verified with `verify_strict`. No vector, constant or formula changed. Not implemented here (not specified, or later boundaries):
+   signed-prekey signature verification, the PrekeyHandshakeHeader parser, the Double Ratchet.
+15. **Dependency rule learned twice** (base64ct 1.8.3, then zeroize_derive 1.5.0): adding a dependency with a plain `cargo test` resolves the NEWEST versions and can pull in crates that need a newer Cargo than 1.81.
+   Add dependencies with the MSRV-aware resolver: `set CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback`, `cargo +stable fetch`, clear the variable, then build with `--locked`.
+   The lock gained exactly 2 packages for X3DH (`x25519-dalek 2.0.1`, `zeroize_derive 1.4.3`); it now has 51 packages.

@@ -5,7 +5,7 @@ with client-owned cryptographic state, server as delivery/control plane only.
 
 **Status: Phase A is complete.** The Phase A gate was met on 2026-10-05 on a real Windows machine (Rust 1.81.0, Go 1.22.6):
 both builds, both CBOR test suites, the independent Python vector checker and 101-vector Rust/Go parity all passed.
-Phase B (PM-BI-X3DH-1, Double Ratchet, media AEAD, HPKE push, transparency) is **unlocked but not started**; it proceeds one
+Phase B (PM-BI-X3DH-1, Double Ratchet, media AEAD, HPKE push, transparency) is **unlocked and in progress** (the PM-BI-X3DH-1 handshake derivation is done and verified in Rust; everything else is not started); it proceeds one
 boundary at a time, each proven against `test-vectors/v1/` before the next. Not for production use. Not audited.
 
 ## Non-claims

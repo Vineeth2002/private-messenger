@@ -35,3 +35,16 @@ set CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=
 cargo test --locked
 ```
 (Linux/macOS: `export CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback` and `unset` afterwards.) `go.sum` is maintained by `go mod tidy` in `services/gateway` in a reviewed change; CI runs `go mod verify`.
+
+## Adding a dependency (the procedure that worked twice)
+A plain `cargo test` after editing `Cargo.toml` resolves the newest versions and can pull in crates that need a newer Cargo than 1.81 (seen: `base64ct 1.8.3`, `zeroize_derive 1.5.0`).
+Use the MSRV-aware resolver for the addition, then build with the pinned toolchain:
+```
+cd native\crypto-core
+set CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback
+cargo +stable fetch
+set CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=
+cargo test --locked
+```
+Check `git diff --stat native/crypto-core/Cargo.lock`: only added lines for the new packages (X3DH added 2 packages, 27 lines). If `fetch` still picks a too-new version:
+`cargo +stable update <crate> --precise <older-version>`.
