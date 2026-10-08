@@ -1,0 +1,175 @@
+{
+  "suite": "PM-DR-NORMAL-LINEAR",
+  "status": "ACTIVE",
+  "origin": "python reference model",
+  "test_only_keys_warning": "ALL private keys in this file are TEST-ONLY and must never be used for real messaging keys.",
+  "protocol": {
+    "header_fields": {
+      "1": "sender_ratchet_public_x25519_32",
+      "2": "previous_chain_length_pn_uint32",
+      "3": "sequence_number_n_uint32"
+    },
+    "nonce_hex": "000000000000000000000000",
+    "prekey_flag": 0,
+    "aad_prefix_ascii": "PM-V1-MSG-AAD",
+    "root_info_ascii": "PM-DR-RATCHET-ROOT-v1",
+    "chain_info_ascii": "PM-DR-RATCHET-CHAIN-v1"
+  },
+  "initial_states": {
+    "alice_post_message_0": {
+      "rk": "d3277cdb324451aa32d68401b82e0a1093b3710354d2b123766b615d84715e31",
+      "dhs_priv": "35331c915e68b2627867eebac49535ea8ed5e57ae3f9246985d57bcfc54b5b6f",
+      "dhs_pub": "f1290308f1f467910441c223f8b226733e515b3f9f111e921a3788f5ee43c155",
+      "dhr_pub": null,
+      "ck_s": "247a310183fb4f62ea92febf0e36a7bfad7eba2a73ac7aef419f2eb0aa18e53e",
+      "ck_r": null,
+      "ns": 1,
+      "nr": 0,
+      "pn": 0
+    },
+    "bob_post_message_0": {
+      "rk": "b2ab47599f4cba116d1ed0bc1ac2ed6e8fc9d3a705f65c94cf8562517a855434",
+      "dhs_priv": "2e1a63255d9051246cb3761b47ad613178934fe652bada76425ef6260b55cfd1",
+      "dhs_pub": "8dd70537c92edb2333c8dd56fa60a43649c50d2ea41041e8786678888161047d",
+      "dhr_pub": "f1290308f1f467910441c223f8b226733e515b3f9f111e921a3788f5ee43c155",
+      "ck_s": "f1ee346637d461f8a8987e678336c84722f0fc6811fba467fcd8a34e9b412393",
+      "ck_r": "247a310183fb4f62ea92febf0e36a7bfad7eba2a73ac7aef419f2eb0aa18e53e",
+      "ns": 0,
+      "nr": 1,
+      "pn": 0
+    }
+  },
+  "messages": [
+    {
+      "id": "bob_reply_new_ratchet",
+      "direction": "bob_to_alice",
+      "ratchet_event": "new_receiving_ratchet",
+      "envelope": {
+        "protocol_version": 1,
+        "envelope_id": "202122232425262728292a2b2c2d2e2f",
+        "sender_device_id": "303132333435363738393a3b3c3d3e3f",
+        "recipient_device_id": "b0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+        "account_epoch": 1,
+        "prekey_flag": 0
+      },
+      "header": {
+        "ratchet_public": "8dd70537c92edb2333c8dd56fa60a43649c50d2ea41041e8786678888161047d",
+        "previous_chain_length": 0,
+        "sequence_number": 0
+      },
+      "derived": {
+        "ratchet_header_hex": "a30158208dd70537c92edb2333c8dd56fa60a43649c50d2ea41041e8786678888161047d02000300",
+        "aad_hex": "504d2d56312d4d53472d41414401202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3fb0b1b2b3b4b5b6b7b8b9babbbcbdbebf0000000100a30158208dd70537c92edb2333c8dd56fa60a43649c50d2ea41041e8786678888161047d02000300",
+        "k_msg_hex": "d22455f10c2c094b9c6e3313b4acc8f87e2a969429a36d1f4680f9e93700f427",
+        "ck_sender_after_hex": "558f329c72ab530ba90ba9ea76d66b82c8123d298d87761df11ef9d1b2f372b5",
+        "ciphertext_with_tag_hex": "7a699d0b8e1278e5a4fc5001397e0b0792f23eba0c1051b419"
+      },
+      "plaintext_hex": "626f62207265706c79",
+      "receiver_transition": {
+        "rk_temp_hex": "b2ab47599f4cba116d1ed0bc1ac2ed6e8fc9d3a705f65c94cf8562517a855434",
+        "ck_r_before_decrypt_hex": "f1ee346637d461f8a8987e678336c84722f0fc6811fba467fcd8a34e9b412393",
+        "first_k_msg_hex": "d22455f10c2c094b9c6e3313b4acc8f87e2a969429a36d1f4680f9e93700f427",
+        "new_local_dhs_priv_hex": "ba0fab443cecbf603e56708301e88e98895338b698d22f41546f7c2442676805",
+        "new_local_dhs_pub_hex": "0afcb5bad545a4f6ead75dec66b80be392bf15dbe8ad1dcb5a794ce575c2bb41",
+        "rk_final_hex": "93d4971570674314017aac9fdf0ba19bb4e1670d6176643f0924fef28f728d78",
+        "ck_s_final_hex": "635781a631f04f449c2178ce32cfff0ad4dd2569bf694f73f822bea9bf9e6b83",
+        "ck_r_after_hex": "558f329c72ab530ba90ba9ea76d66b82c8123d298d87761df11ef9d1b2f372b5",
+        "pn_after": 1,
+        "ns_after": 0,
+        "nr_after": 1
+      }
+    },
+    {
+      "id": "bob_followup_same_ratchet",
+      "direction": "bob_to_alice",
+      "ratchet_event": "same_ratchet",
+      "envelope": {
+        "protocol_version": 1,
+        "envelope_id": "606162636465666768696a6b6c6d6e6f",
+        "sender_device_id": "303132333435363738393a3b3c3d3e3f",
+        "recipient_device_id": "b0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+        "account_epoch": 1,
+        "prekey_flag": 0
+      },
+      "header": {
+        "ratchet_public": "8dd70537c92edb2333c8dd56fa60a43649c50d2ea41041e8786678888161047d",
+        "previous_chain_length": 0,
+        "sequence_number": 1
+      },
+      "derived": {
+        "ratchet_header_hex": "a30158208dd70537c92edb2333c8dd56fa60a43649c50d2ea41041e8786678888161047d02000301",
+        "aad_hex": "504d2d56312d4d53472d41414401606162636465666768696a6b6c6d6e6f303132333435363738393a3b3c3d3e3fb0b1b2b3b4b5b6b7b8b9babbbcbdbebf0000000100a30158208dd70537c92edb2333c8dd56fa60a43649c50d2ea41041e8786678888161047d02000301",
+        "k_msg_hex": "42921eb6b7bd69ee4b7702f247812854b5b4027755c5b09f1a1532b5abb9a387",
+        "ck_sender_before_hex": "558f329c72ab530ba90ba9ea76d66b82c8123d298d87761df11ef9d1b2f372b5",
+        "ck_sender_after_hex": "d5db05a5f936499a489ef29ceae1ccf863c96541e4f127dfc1d21fa0afa6dbbf",
+        "ciphertext_with_tag_hex": "eeb9a80e71e98f620fae61535d461b64d44954cccb1ddb5a8f04d343"
+      },
+      "plaintext_hex": "626f6220666f6c6c6f777570",
+      "receiver_expected_nr": 1,
+      "receiver_nr_after": 2
+    },
+    {
+      "id": "alice_reply_new_ratchet",
+      "direction": "alice_to_bob",
+      "ratchet_event": "new_receiving_ratchet",
+      "envelope": {
+        "protocol_version": 1,
+        "envelope_id": "404142434445464748494a4b4c4d4e4f",
+        "sender_device_id": "b0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+        "recipient_device_id": "303132333435363738393a3b3c3d3e3f",
+        "account_epoch": 3,
+        "prekey_flag": 0
+      },
+      "header": {
+        "ratchet_public": "0afcb5bad545a4f6ead75dec66b80be392bf15dbe8ad1dcb5a794ce575c2bb41",
+        "previous_chain_length": 1,
+        "sequence_number": 0
+      },
+      "derived": {
+        "ratchet_header_hex": "a30158200afcb5bad545a4f6ead75dec66b80be392bf15dbe8ad1dcb5a794ce575c2bb4102010300",
+        "aad_hex": "504d2d56312d4d53472d41414401404142434445464748494a4b4c4d4e4fb0b1b2b3b4b5b6b7b8b9babbbcbdbebf303132333435363738393a3b3c3d3e3f0000000300a30158200afcb5bad545a4f6ead75dec66b80be392bf15dbe8ad1dcb5a794ce575c2bb4102010300",
+        "k_msg_hex": "7cf4fbfee21e21ff6317abc731a24b0a073ea3eb98122b3b04c2b8639170c06c",
+        "ck_sender_after_hex": "635c315cdaae94cb8775984d0a3fdbd51aee765edfec6e9c7dca09e492103d8b",
+        "ciphertext_with_tag_hex": "80db5cb3a6d71a2fa0fa0a6e8cf7ec94764835b54e8f3452c292b4"
+      },
+      "plaintext_hex": "616c696365207265706c79",
+      "receiver_transition": {
+        "rk_temp_hex": "93d4971570674314017aac9fdf0ba19bb4e1670d6176643f0924fef28f728d78",
+        "ck_r_before_decrypt_hex": "635781a631f04f449c2178ce32cfff0ad4dd2569bf694f73f822bea9bf9e6b83",
+        "first_k_msg_hex": "7cf4fbfee21e21ff6317abc731a24b0a073ea3eb98122b3b04c2b8639170c06c",
+        "new_local_dhs_priv_hex": "1adbbac5a37d1d9fef26c4680fd30afb5f506d1aa0b692fb93fb60f5e8cbab83",
+        "new_local_dhs_pub_hex": "1069ca7b17767a1deec72ffedad264d1ff7f29f185ec8a61bd47ed723be8fc01",
+        "rk_final_hex": "f582547a40ca34a596e383c6c0304bff043a9981ec47aae41258d97d35e171c1",
+        "ck_s_final_hex": "b55d2e9b01e5d8e457b4c2513370a45614aa65684cb3eb8ed8d72129d1767a03",
+        "ck_r_after_hex": "635c315cdaae94cb8775984d0a3fdbd51aee765edfec6e9c7dca09e492103d8b",
+        "pn_after": 2,
+        "ns_after": 0,
+        "nr_after": 1
+      }
+    }
+  ],
+  "negative": [
+    {
+      "id": "tampered_bob_reply_ciphertext",
+      "message_id": "bob_reply_new_ratchet",
+      "mutation": "flip_last_ciphertext_bit",
+      "expected": "AEAD_AUTH_FAILURE",
+      "expected_state_after": "UNCHANGED"
+    },
+    {
+      "id": "tampered_bob_followup_sequence",
+      "message_id": "bob_followup_same_ratchet",
+      "mutation": "set_sequence_number_to_2",
+      "expected": "INVALID_INITIAL_STATE",
+      "expected_state_after": "UNCHANGED"
+    }
+  ],
+  "invariants": [
+    "Normal messages use prekey_flag=0.",
+    "The normal-message nonce is fixed zero and each K_msg is single-use.",
+    "Same-ratchet receive requires DHR equality and N == Nr.",
+    "New-ratchet receive performs DH/KDF on temporaries and commits only after AEAD authentication.",
+    "Pn is the sender's previous sending-chain length.",
+    "AAD account_epoch is the recipient account epoch."
+  ]
+}

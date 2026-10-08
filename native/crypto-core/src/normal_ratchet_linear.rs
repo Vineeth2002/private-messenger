@@ -301,6 +301,10 @@ fn decrypt_new_ratchet_message_inner(
 }
 
 #[cfg(test)]
+#[path = "normal_ratchet_vector_tests.rs"]
+mod vector_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::Value as JsonValue;

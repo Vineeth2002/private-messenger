@@ -21,11 +21,13 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "${{ env.PYTHON_VERSION }}" }
       - run: python -m pip install cryptography
-      - name: Vector files are reproducible from the generator
+      - name: Vector files are reproducible from the generators
         run: |
           python tools/gen_vectors.py
+          python tools/build_normal_linear_vectors.py
           git diff --exit-code -- test-vectors
       - run: python tools/check_vectors.py
+      - run: python tools/check_normal_vectors.py
 
   rust:
     name: rust PM-CBOR-2026 + recovery vectors

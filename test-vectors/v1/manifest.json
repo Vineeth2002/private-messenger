@@ -42,6 +42,11 @@
       "sha256": "8b95fa1aa96552eb113b47a08330c32c0276cebf67929b394d18d3030706daa5"
     },
     {
+      "path": "normal_ratchet_linear.json",
+      "status": "ACTIVE",
+      "sha256": "2741cc343b99b1eba8c866519c2d2dbfebc18b0db51020a4b50345072960922b"
+    },
+    {
       "path": "recovery_derivation_fixture.json",
       "status": "ACTIVE",
       "sha256": "b34990984b060290b9d1d0eac0aa6944498ba2a6567561e5fdd1151e56d97ad5"
