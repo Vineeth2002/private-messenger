@@ -369,6 +369,29 @@ fn initial_state(state: &RatchetState) -> bool {
         && state.pn == 0
 }
 
+/// Apply the first receiving-side DH-ratchet transition after a peer publishes
+/// a new ratchet public key. This boundary only creates the new receiving chain;
+/// deriving the next message key remains part of the normal-message boundary.
+pub fn receive_first_dh_ratchet(
+    state: &mut RatchetState,
+    peer_ratchet_pub: [u8; 32],
+) -> Result<(), RatchetError> {
+    if state.dhr_pub == Some(peer_ratchet_pub) || state.ck_r.is_some() {
+        return Err(RatchetError::InvalidInitialState);
+    }
+    let dh_out = dh_bytes(&state.dhs_priv, &peer_ratchet_pub)?;
+    let (rk_next, ck_r) = kdf_rk(&state.rk, &dh_out);
+
+    // Commit only after the contributory DH and KDF have succeeded.
+    state.rk = rk_next;
+    state.dhr_pub = Some(peer_ratchet_pub);
+    state.pn = state.ns;
+    state.ns = 0;
+    state.nr = 0;
+    state.ck_r = Some(ck_r);
+    Ok(())
+}
+
 /// Encrypt Message 0 and advance Alice's sending chain from Ns=0 to Ns=1.
 /// The caller supplies the already validated complete PrekeyHandshakeHeader.
 pub fn encrypt_message_0(
@@ -720,6 +743,47 @@ mod tests {
             state.nr,
             state.pn,
         )
+    }
+
+    #[test]
+    fn alice_first_receive_dh_ratchet_matches_frozen_bob_reply_state() {
+        let v = load();
+        let sk = arr::<32>(v["sk"].as_str().unwrap());
+        let alice = &v["alice"];
+        let spk_b_pub = arr::<32>("ec8c415e81fc6095efe84f8c418d7387acea1cd8faad6f48dc2d7f486c9ecb57");
+        let mut state = RatchetState::init_alice(
+            &sk,
+            &spk_b_pub,
+            arr::<32>(alice["dhs_a0_priv"].as_str().unwrap()),
+        )
+        .unwrap();
+
+        // Frozen post-Message-0 Alice state. KDF_CK does not change RK.
+        state.rk = Zeroizing::new(arr::<32>(alice["rk_a"].as_str().unwrap()));
+        state.ck_s = Some(Zeroizing::new(
+            arr::<32>(alice["ck_s_after_msg0"].as_str().unwrap()),
+        ));
+        state.ns = alice["ns_after"].as_u64().unwrap() as u32;
+
+        let bob_dhs_b1_pub = arr::<32>(v["bob"]["dhs_b1_pub"].as_str().unwrap());
+        receive_first_dh_ratchet(&mut state, bob_dhs_b1_pub).unwrap();
+
+        assert_eq!(
+            hex_encode(&state.rk),
+            v["alice_after_bob_reply"]["rk_a_next"]
+                .as_str()
+                .unwrap()
+        );
+        assert_eq!(
+            hex_encode(state.ck_r.as_ref().unwrap()),
+            v["alice_after_bob_reply"]["ck_r"]
+                .as_str()
+                .unwrap()
+        );
+        assert_eq!(state.dhr_pub, Some(bob_dhs_b1_pub));
+        assert_eq!(state.pn, 1);
+        assert_eq!(state.ns, 0);
+        assert_eq!(state.nr, 0);
     }
 
     #[test]
