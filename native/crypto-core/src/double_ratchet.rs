@@ -26,6 +26,13 @@ use zeroize::Zeroizing;
 use crate::cbor::{self, CborError, Value};
 use crate::x3dh::{self, X3dhError};
 
+#[path = "normal_ratchet_linear.rs"]
+mod normal_ratchet_linear;
+
+pub use normal_ratchet_linear::{
+    decrypt_message, decrypt_new_ratchet_message, encrypt_message, NormalMessageHeader,
+};
+
 pub const DR_ROOT_INFO: &[u8] = b"PM-DR-RATCHET-ROOT-v1";
 pub const DR_CHAIN_INFO: &[u8] = b"PM-DR-RATCHET-CHAIN-v1";
 pub const MSG_AAD: &[u8] = b"PM-V1-MSG-AAD";
