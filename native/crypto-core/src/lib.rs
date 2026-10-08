@@ -8,6 +8,7 @@
 
 pub mod cbor;
 pub mod double_ratchet;
+pub mod hpke;
 pub mod media;
 pub mod recovery;
 pub mod x3dh;
