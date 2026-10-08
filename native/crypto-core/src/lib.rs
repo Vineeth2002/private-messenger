@@ -11,4 +11,5 @@ pub mod double_ratchet;
 pub mod hpke;
 pub mod media;
 pub mod recovery;
+pub mod transparency;
 pub mod x3dh;
