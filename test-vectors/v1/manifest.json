@@ -33,8 +33,8 @@
     },
     {
       "path": "hpke_push_vectors.json",
-      "status": "PLACEHOLDER_LOCKED",
-      "sha256": "f2b420df573adf1713261dfc2950cb9faf99372e03fe42d7780e6f9d0350a803"
+      "status": "ACTIVE",
+      "sha256": "e0b4394e064a2be68aac2dc7a798119be4f72cc8ec67d9497084494b4ccc2f2d"
     },
     {
       "path": "media_chunk_aead.json",

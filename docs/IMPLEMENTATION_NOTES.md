@@ -122,3 +122,11 @@ Not written: Rust/Go implementations of X3DH, ratchet and media. The gate is met
 - Rust validates sender ciphertexts and the receiving state machine against the shared vector; no Go ratchet implementation is introduced at this boundary.
 - No protocol label, KDF, nonce, header field or cryptographic constant changed in Step 3.
 - Step 4 remains HPKE Push.
+
+## I. Phase B Step 4: HPKE push
+- The repository already contained the RFC 9180 HPKE Base cryptographic core (`DHKEM(X25519, HKDF-SHA256) + HKDF-SHA256 + ChaCha20-Poly1305`).
+- Step 4 adds a one-shot stateless API for the push wake-up boundary: fresh Base encapsulation, one seal/open operation, and no persisted HPKE context.
+- Added `test-vectors/v1/hpke_push_vectors.json`, generated independently by `tools/build_hpke_push_vectors.py` and checked independently by `tools/check_hpke_push_vectors.py`.
+- The shared vector freezes the HPKE cryptographic flow only. `09-notification-hpke.md` freezes the notification contents and the stateless Base requirement, but does not freeze an exact PM-CBOR field map or push-specific `info`/AAD constants; none were invented in this step.
+- The push channel remains a wake-up hint only and provides confidentiality, not sender authentication. Application content must be authenticated by the normal messenger connection before presentation.
+- No Go HPKE implementation is introduced at this boundary because the gateway remains a delivery/control plane and the notification cryptography is client-side.

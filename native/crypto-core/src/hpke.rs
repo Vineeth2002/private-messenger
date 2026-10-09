@@ -303,6 +303,47 @@ pub fn setup_base_receiver(
     Ok(HpkeReceiverContext::new(key, base_nonce))
 }
 
+/// One-shot HPKE Base seal for the notification wake-up boundary.
+///
+/// A fresh sender context is created for one notification and the sequence is fixed
+/// at zero. The push transport is stateless: no HPKE sender context is persisted.
+pub fn seal_base_stateless(
+    recipient_public: &[u8; 32],
+    info: &[u8],
+    aad: &[u8],
+    plaintext: &[u8],
+) -> Result<(EncapsulatedKey, Vec<u8>), HpkeError> {
+    let (enc, mut sender) = setup_base_sender(recipient_public, info)?;
+    let ciphertext = sender.seal(aad, plaintext)?;
+    Ok((enc, ciphertext))
+}
+
+/// Deterministic one-shot variant used only by shared test vectors.
+pub(crate) fn seal_base_stateless_with_ephemeral(
+    recipient_public: &[u8; 32],
+    info: &[u8],
+    aad: &[u8],
+    plaintext: &[u8],
+    ephemeral_private: [u8; 32],
+) -> Result<(EncapsulatedKey, Vec<u8>), HpkeError> {
+    let (enc, mut sender) =
+        setup_base_sender_with_ephemeral(recipient_public, info, ephemeral_private)?;
+    let ciphertext = sender.seal(aad, plaintext)?;
+    Ok((enc, ciphertext))
+}
+
+/// One-shot HPKE Base open for the notification wake-up boundary.
+pub fn open_base_stateless(
+    recipient_private: [u8; 32],
+    enc: &[u8; 32],
+    info: &[u8],
+    aad: &[u8],
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, HpkeError> {
+    let mut receiver = setup_base_receiver(recipient_private, enc, info)?;
+    receiver.open(aad, ciphertext)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -410,3 +451,7 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+#[path = "hpke_push_vector_tests.rs"]
+mod push_vector_tests;

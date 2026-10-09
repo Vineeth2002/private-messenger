@@ -1,6 +1,46 @@
 {
   "suite": "PM-PUSH-HPKE",
-  "status": "PLACEHOLDER_LOCKED",
-  "note": "Not populated: the required specification is missing or the dependent boundary is locked (HPKE push, transparency leaf layout, equivocation cases). No vector data is fabricated here.",
-  "vectors": []
+  "status": "ACTIVE",
+  "mode": "base-stateless",
+  "warning": "Private keys and opaque plaintext in this file are TEST-ONLY fixtures.",
+  "scope_note": "This boundary freezes the stateless HPKE Base cryptographic flow for push wake-up hints. The notification payload schema/field numbering is not introduced here because 09-notification-hpke.md does not freeze its exact PM-CBOR field map.",
+  "suite_ids": {
+    "kem_id": "0x0020",
+    "kdf_id": "0x0001",
+    "aead_id": "0x0003"
+  },
+  "cases": [
+    {
+      "id": "stateless_push",
+      "recipient_private_hex": "0202030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+      "recipient_public_hex": "07a37cbc142093c8b755dc1b10e86cb426374ad16aa853ed0bdfc0b2b86d1c7c",
+      "ephemeral_private_hex": "2122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40",
+      "enc_hex": "5869aff450549732cbaaed5e5df9b30a6da31cb0e5742bad5ad4a1a768f1a67b",
+      "info_hex": "706d2d746573742d707573682d696e666f",
+      "aad_hex": "706d2d746573742d707573682d616164",
+      "plaintext_hex": "6f70617175652d77616b6575702d74657374",
+      "shared_secret_hex": "7a669ce01ea61a996a4597944ab129e8277c49645df37d5ffb34b69c7d486135",
+      "key_hex": "837f78d0fbbf38e980f97934454adf4ab969720029e203debd0b56aef92cb24b",
+      "base_nonce_hex": "67237e29f3cd3b22ffe0c050",
+      "ciphertext_hex": "335c9b001bc3d65d76e3c7ea6d38783d5c100a1407187c1fb7b3185e5eb9e9d3f791"
+    }
+  ],
+  "negative": [
+    {
+      "id": "tampered_ciphertext",
+      "expected": "AEAD_OPEN_FAILED",
+      "expected_state_after": "NO_PERSISTED_HPKE_STATE"
+    },
+    {
+      "id": "low_order_enc",
+      "expected": "NON_CONTRIBUTORY_DH",
+      "expected_state_after": "NO_PERSISTED_HPKE_STATE"
+    }
+  ],
+  "invariants": [
+    "Each push notification uses fresh Base-mode encapsulation.",
+    "The one-shot sender and receiver contexts are discarded after one notification.",
+    "Push confidentiality does not authenticate the sender.",
+    "Application content must be authenticated by the normal messenger connection before presentation."
+  ]
 }
