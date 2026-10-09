@@ -279,12 +279,11 @@ dump("recovery_derivation_fixture.json", fx)
 
 # ------------------------------------------------------------------ placeholders (locked)
 LOCK = ("Not populated: the required specification is missing or the dependent boundary is locked "
-        "(reorder/skipped-key semantics, HPKE push, transparency leaf layout). No vector data is fabricated here.")
+        "(HPKE push, transparency leaf layout, equivocation cases). No vector data is fabricated here.")
 import gen_protocol_vectors
 gen_protocol_vectors.run(dump)
-for name, suite in [("double_ratchet_reorder.json", "PM-DR-REORDER"),
-                    ("hpke_push_vectors.json", "PM-PUSH-HPKE"), ("transparency_leaf.json", "PM-KT-LEAF"),
-                    ("equivocation_cases.json", "PM-KT-EQUIVOCATION")]:
+for name, suite in [("hpke_push_vectors.json", "PM-PUSH-HPKE"),
+                    ("transparency_leaf.json", "PM-KT-LEAF"), ("equivocation_cases.json", "PM-KT-EQUIVOCATION")]:
     dump(name, {"suite": suite, "status": "PLACEHOLDER_LOCKED", "note": LOCK, "vectors": []})
 
 # ------------------------------------------------------------------ manifest

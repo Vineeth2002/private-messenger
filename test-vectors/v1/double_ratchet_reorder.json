@@ -1,6 +1,194 @@
 {
   "suite": "PM-DR-REORDER",
-  "status": "PLACEHOLDER_LOCKED",
-  "note": "Not populated: the required specification is missing or the dependent boundary is locked (reorder/skipped-key semantics, HPKE push, transparency leaf layout). No vector data is fabricated here.",
-  "vectors": []
+  "status": "ACTIVE",
+  "origin": "python reference model extending normal_ratchet_linear.json",
+  "test_only_keys_warning": "ALL private keys in this file are TEST-ONLY and must never be used for real messaging keys.",
+  "protocol": {
+    "header_fields": {
+      "1": "sender_ratchet_public_x25519_32",
+      "2": "previous_chain_length_pn_uint32",
+      "3": "sequence_number_n_uint32"
+    },
+    "prekey_flag": 0,
+    "nonce_hex": "000000000000000000000000",
+    "aad_prefix_ascii": "PM-V1-MSG-AAD",
+    "root_info_ascii": "PM-DR-RATCHET-ROOT-v1",
+    "chain_info_ascii": "PM-DR-RATCHET-CHAIN-v1"
+  },
+  "scenario": {
+    "id": "delayed_old_chain_survives_new_ratchet",
+    "description": "Deliver a new-ratchet message out of order while a delayed old-chain message remains pending; consumed skipped keys reject replay.",
+    "initial_receiver": {
+      "rk": "93d4971570674314017aac9fdf0ba19bb4e1670d6176643f0924fef28f728d78",
+      "dhs_priv": "ba0fab443cecbf603e56708301e88e98895338b698d22f41546f7c2442676805",
+      "dhs_pub": "0afcb5bad545a4f6ead75dec66b80be392bf15dbe8ad1dcb5a794ce575c2bb41",
+      "dhr_pub": "8dd70537c92edb2333c8dd56fa60a43649c50d2ea41041e8786678888161047d",
+      "ck_s": "635c315cdaae94cb8775984d0a3fdbd51aee765edfec6e9c7dca09e492103d8b",
+      "ck_r": "d5db05a5f936499a489ef29ceae1ccf863c96541e4f127dfc1d21fa0afa6dbbf",
+      "ns": 1,
+      "nr": 2,
+      "pn": 1,
+      "skipped_keys": []
+    },
+    "old_sender": {
+      "rk": "b2ab47599f4cba116d1ed0bc1ac2ed6e8fc9d3a705f65c94cf8562517a855434",
+      "dhs_priv": "2e1a63255d9051246cb3761b47ad613178934fe652bada76425ef6260b55cfd1",
+      "dhs_pub": "8dd70537c92edb2333c8dd56fa60a43649c50d2ea41041e8786678888161047d",
+      "dhr_pub": "f1290308f1f467910441c223f8b226733e515b3f9f111e921a3788f5ee43c155",
+      "ck_s": "d5db05a5f936499a489ef29ceae1ccf863c96541e4f127dfc1d21fa0afa6dbbf",
+      "ck_r": "247a310183fb4f62ea92febf0e36a7bfad7eba2a73ac7aef419f2eb0aa18e53e",
+      "ns": 2,
+      "nr": 1,
+      "pn": 0,
+      "skipped_keys": []
+    },
+    "new_sender": {
+      "rk": "f582547a40ca34a596e383c6c0304bff043a9981ec47aae41258d97d35e171c1",
+      "dhs_priv": "1adbbac5a37d1d9fef26c4680fd30afb5f506d1aa0b692fb93fb60f5e8cbab83",
+      "dhs_pub": "1069ca7b17767a1deec72ffedad264d1ff7f29f185ec8a61bd47ed723be8fc01",
+      "dhr_pub": "0afcb5bad545a4f6ead75dec66b80be392bf15dbe8ad1dcb5a794ce575c2bb41",
+      "ck_s": "b55d2e9b01e5d8e457b4c2513370a45614aa65684cb3eb8ed8d72129d1767a03",
+      "ck_r": "635c315cdaae94cb8775984d0a3fdbd51aee765edfec6e9c7dca09e492103d8b",
+      "ns": 0,
+      "nr": 1,
+      "pn": 3,
+      "skipped_keys": []
+    },
+    "new_ratchet_receiver_dhs_priv_hex": "1ae90ffb38edc9637a12f3233b9f5917623923300438024d7298045e501b4d0f",
+    "new_ratchet_receiver_dhs_pub_hex": "383c875bdd2e023620e71a129abea2cbd2f92bb739e135370d3a993cce59ff09",
+    "messages": [
+      {
+        "id": "old_delayed",
+        "protocol_version": 1,
+        "envelope_id": "909192939495969798999a9b9c9d9e9f",
+        "sender_device_id": "303132333435363738393a3b3c3d3e3f",
+        "recipient_device_id": "b0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+        "account_epoch": 1,
+        "prekey_flag": 0,
+        "sequence_number": 2,
+        "previous_chain_length": 0,
+        "ratchet_public": "8dd70537c92edb2333c8dd56fa60a43649c50d2ea41041e8786678888161047d",
+        "ratchet_header_hex": "a30158208dd70537c92edb2333c8dd56fa60a43649c50d2ea41041e8786678888161047d02000302",
+        "aad_hex": "504d2d56312d4d53472d41414401909192939495969798999a9b9c9d9e9f303132333435363738393a3b3c3d3e3fb0b1b2b3b4b5b6b7b8b9babbbcbdbebf0000000100a30158208dd70537c92edb2333c8dd56fa60a43649c50d2ea41041e8786678888161047d02000302",
+        "k_msg_hex": "72807af50ba606dde99d9a7e1973ccccf820afc3189ec5d9578986ded954e704",
+        "ck_sender_after_hex": "e58920f28c6a0eb1c173f11ccddafc7d413a332edcf1b02fbcb0ecefa470b9f4",
+        "plaintext_hex": "6f6c642064656c61796564",
+        "ciphertext_with_tag_hex": "d1c83f4761201da3aa6e6564ec37e463fe85b6820bcbdae40b9ec5"
+      },
+      {
+        "id": "new_ratchet_0",
+        "protocol_version": 1,
+        "envelope_id": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+        "sender_device_id": "303132333435363738393a3b3c3d3e3f",
+        "recipient_device_id": "b0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+        "account_epoch": 1,
+        "prekey_flag": 0,
+        "sequence_number": 0,
+        "previous_chain_length": 3,
+        "ratchet_public": "1069ca7b17767a1deec72ffedad264d1ff7f29f185ec8a61bd47ed723be8fc01",
+        "ratchet_header_hex": "a30158201069ca7b17767a1deec72ffedad264d1ff7f29f185ec8a61bd47ed723be8fc0102030300",
+        "aad_hex": "504d2d56312d4d53472d41414401a0a1a2a3a4a5a6a7a8a9aaabacadaeaf303132333435363738393a3b3c3d3e3fb0b1b2b3b4b5b6b7b8b9babbbcbdbebf0000000100a30158201069ca7b17767a1deec72ffedad264d1ff7f29f185ec8a61bd47ed723be8fc0102030300",
+        "k_msg_hex": "9ead026ae58a9b0b0debb59fcd2664d49a34b9872eb1c3ad5e46fb4632a5b8e2",
+        "ck_sender_after_hex": "b183ad2bc72c8709422cf1cb37e60c5b3e729f08c40088bdb7975e741586b8d4",
+        "plaintext_hex": "6e657720726174636865742030",
+        "ciphertext_with_tag_hex": "76c40d6e79de90626fded4e7796489fde7958a6b1fd72655b08b9a7b8b"
+      },
+      {
+        "id": "new_ratchet_1",
+        "protocol_version": 1,
+        "envelope_id": "c0c1c2c3c4c5c6c7c8c9cacbcccdcecf",
+        "sender_device_id": "303132333435363738393a3b3c3d3e3f",
+        "recipient_device_id": "b0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+        "account_epoch": 1,
+        "prekey_flag": 0,
+        "sequence_number": 1,
+        "previous_chain_length": 3,
+        "ratchet_public": "1069ca7b17767a1deec72ffedad264d1ff7f29f185ec8a61bd47ed723be8fc01",
+        "ratchet_header_hex": "a30158201069ca7b17767a1deec72ffedad264d1ff7f29f185ec8a61bd47ed723be8fc0102030301",
+        "aad_hex": "504d2d56312d4d53472d41414401c0c1c2c3c4c5c6c7c8c9cacbcccdcecf303132333435363738393a3b3c3d3e3fb0b1b2b3b4b5b6b7b8b9babbbcbdbebf0000000100a30158201069ca7b17767a1deec72ffedad264d1ff7f29f185ec8a61bd47ed723be8fc0102030301",
+        "k_msg_hex": "b476f78f1fe85fa3c858936551cdccf79b39052cb0ce4fca4fac8eafc7fcb0da",
+        "ck_sender_after_hex": "cb1f565aada10df136b1094653c4e247cffb31dec9122cbda4a040475734a15b",
+        "plaintext_hex": "6e657720726174636865742031",
+        "ciphertext_with_tag_hex": "de5e555f0e94a64cc9e468e95c02b174be8312259e79bcc9d33f90f364"
+      }
+    ],
+    "delivery_order": [
+      "new_ratchet_1",
+      "old_delayed",
+      "new_ratchet_0"
+    ],
+    "expected_after_new_ratchet_1": {
+      "rk": "3d69f5c5e94af52eac6d87f879f8af1c5375fc6e4eb61f500841b201030237b3",
+      "dhs_priv": "1ae90ffb38edc9637a12f3233b9f5917623923300438024d7298045e501b4d0f",
+      "dhs_pub": "383c875bdd2e023620e71a129abea2cbd2f92bb739e135370d3a993cce59ff09",
+      "dhr_pub": "1069ca7b17767a1deec72ffedad264d1ff7f29f185ec8a61bd47ed723be8fc01",
+      "ck_s": "a4860f4342ec1210eb28db6d7e046814c3985e2808ffc1bed359a6a1c2d6a65b",
+      "ck_r": "cb1f565aada10df136b1094653c4e247cffb31dec9122cbda4a040475734a15b",
+      "ns": 0,
+      "nr": 2,
+      "pn": 1,
+      "skipped_keys": [
+        {
+          "ratchet_public": "8dd70537c92edb2333c8dd56fa60a43649c50d2ea41041e8786678888161047d",
+          "sequence_number": 2
+        },
+        {
+          "ratchet_public": "1069ca7b17767a1deec72ffedad264d1ff7f29f185ec8a61bd47ed723be8fc01",
+          "sequence_number": 0
+        }
+      ]
+    },
+    "expected_after_old_delayed": {
+      "rk": "3d69f5c5e94af52eac6d87f879f8af1c5375fc6e4eb61f500841b201030237b3",
+      "dhs_priv": "1ae90ffb38edc9637a12f3233b9f5917623923300438024d7298045e501b4d0f",
+      "dhs_pub": "383c875bdd2e023620e71a129abea2cbd2f92bb739e135370d3a993cce59ff09",
+      "dhr_pub": "1069ca7b17767a1deec72ffedad264d1ff7f29f185ec8a61bd47ed723be8fc01",
+      "ck_s": "a4860f4342ec1210eb28db6d7e046814c3985e2808ffc1bed359a6a1c2d6a65b",
+      "ck_r": "cb1f565aada10df136b1094653c4e247cffb31dec9122cbda4a040475734a15b",
+      "ns": 0,
+      "nr": 2,
+      "pn": 1,
+      "skipped_keys": [
+        {
+          "ratchet_public": "1069ca7b17767a1deec72ffedad264d1ff7f29f185ec8a61bd47ed723be8fc01",
+          "sequence_number": 0
+        }
+      ]
+    },
+    "expected_after_new_ratchet_0": {
+      "rk": "3d69f5c5e94af52eac6d87f879f8af1c5375fc6e4eb61f500841b201030237b3",
+      "dhs_priv": "1ae90ffb38edc9637a12f3233b9f5917623923300438024d7298045e501b4d0f",
+      "dhs_pub": "383c875bdd2e023620e71a129abea2cbd2f92bb739e135370d3a993cce59ff09",
+      "dhr_pub": "1069ca7b17767a1deec72ffedad264d1ff7f29f185ec8a61bd47ed723be8fc01",
+      "ck_s": "a4860f4342ec1210eb28db6d7e046814c3985e2808ffc1bed359a6a1c2d6a65b",
+      "ck_r": "cb1f565aada10df136b1094653c4e247cffb31dec9122cbda4a040475734a15b",
+      "ns": 0,
+      "nr": 2,
+      "pn": 1,
+      "skipped_keys": []
+    }
+  },
+  "negative": [
+    {
+      "id": "tampered_new_ratchet_1_is_atomic",
+      "message_id": "new_ratchet_1",
+      "mutation": "flip_last_ciphertext_bit",
+      "expected": "AEAD_AUTH_FAILURE",
+      "expected_state_after": "UNCHANGED"
+    },
+    {
+      "id": "replay_new_ratchet_1_after_consumption",
+      "message_id": "new_ratchet_1",
+      "mutation": "deliver_same_envelope_again_after_success",
+      "expected": "REPLAY_DETECTED",
+      "expected_state_after": "UNCHANGED"
+    }
+  ],
+  "invariants": [
+    "A new-ratchet receive may carry a non-zero previous-chain gap and a non-zero new-chain gap simultaneously.",
+    "The receiver retains skipped keys from the old chain and the new chain until each is consumed.",
+    "A successfully consumed skipped key is removed and cannot decrypt the same envelope again.",
+    "Authentication failure during a new-ratchet receive commits neither ratchet state nor skipped keys.",
+    "The new-ratchet header carries Pn=3, proving an old-chain N=2 message can arrive after the ratchet transition; the receiver state keeps its own pn=1."
+  ]
 }

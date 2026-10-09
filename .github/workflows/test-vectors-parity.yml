@@ -25,9 +25,11 @@ jobs:
         run: |
           python tools/gen_vectors.py
           python tools/build_normal_linear_vectors.py
+          python tools/build_reorder_vectors.py
           git diff --exit-code -- test-vectors
       - run: python tools/check_vectors.py
       - run: python tools/check_normal_vectors.py
+      - run: python tools/check_reorder_vectors.py
 
   rust:
     name: rust PM-CBOR-2026 + recovery vectors

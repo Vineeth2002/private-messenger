@@ -18,8 +18,8 @@
     },
     {
       "path": "double_ratchet_reorder.json",
-      "status": "PLACEHOLDER_LOCKED",
-      "sha256": "16a4edf7898199d9ec7529fc6c19e124748a92c1133bc6e316561e1e5128a77d"
+      "status": "ACTIVE",
+      "sha256": "b1237eeb8d03576a70c72db0a8106a7ea32c1d5290b99e453faaad9d2903074a"
     },
     {
       "path": "ed25519_baseline.json",
@@ -29,12 +29,12 @@
     {
       "path": "equivocation_cases.json",
       "status": "PLACEHOLDER_LOCKED",
-      "sha256": "ce9578bdc8508c40dbbfe480df565b245ac418b44759f09e8d05bb3d1143656c"
+      "sha256": "137889d1d7072b5ce2e62746947d75a8e1b02eef06e2b235ebbff0595092b01d"
     },
     {
       "path": "hpke_push_vectors.json",
       "status": "PLACEHOLDER_LOCKED",
-      "sha256": "637596ffe7ef2828818bbf7783e924d12cbe589fe483e24ac0d6737a56e158c9"
+      "sha256": "f2b420df573adf1713261dfc2950cb9faf99372e03fe42d7780e6f9d0350a803"
     },
     {
       "path": "media_chunk_aead.json",
@@ -59,7 +59,7 @@
     {
       "path": "transparency_leaf.json",
       "status": "PLACEHOLDER_LOCKED",
-      "sha256": "f93b3e83d6e4534c57500f08b71e8737054be44159e0d392ddefa95c9b00f043"
+      "sha256": "16f205f28d2afdfa5b0519d42b3989510a4d21bf5e0f04df912bb24896eba11c"
     }
   ]
 }

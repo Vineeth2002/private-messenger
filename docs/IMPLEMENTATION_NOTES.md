@@ -112,3 +112,13 @@ Not written: Rust/Go implementations of X3DH, ratchet and media. The gate is met
 - Normal-message receives now support authenticated out-of-order delivery within the retained skipped-key window and reject consumed keys as replays without mutating ratchet state.
 - New-ratchet receives derive missing old-chain and new-chain keys before authentication and commit all ratchet/skipped-key state only after AEAD succeeds.
 - Ratchet-state persistence/serialization is intentionally not implemented because no frozen persistence format exists yet; it remains outside this protocol boundary.
+
+
+## H. Phase B Step 3: Reorder/replay vectors
+- Activated `test-vectors/v1/double_ratchet_reorder.json` as the shared PM-DR-REORDER fixture.
+- The vector extends the frozen normal-ratchet state rather than introducing a second ratchet baseline.
+- The scenario freezes a delayed old-chain N=2 message, a new-ratchet Pn=3 pair, out-of-order delivery of new-ratchet N=1 first, retention of both skipped keys, one-time consumption, and replay rejection.
+- `tools/build_reorder_vectors.py` is the independent Python generator and `tools/check_reorder_vectors.py` independently recomputes the headers, AAD, X25519/HKDF/HMAC/AEAD values, delayed old-chain delivery and replay semantics.
+- Rust validates sender ciphertexts and the receiving state machine against the shared vector; no Go ratchet implementation is introduced at this boundary.
+- No protocol label, KDF, nonce, header field or cryptographic constant changed in Step 3.
+- Step 4 remains HPKE Push.

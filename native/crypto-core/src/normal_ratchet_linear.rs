@@ -470,6 +470,10 @@ mod vector_tests;
 mod complete_tests;
 
 #[cfg(test)]
+#[path = "reorder_vector_tests.rs"]
+mod reorder_vector_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::Value as JsonValue;
