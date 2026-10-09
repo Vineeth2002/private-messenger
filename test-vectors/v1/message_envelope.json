@@ -1,0 +1,54 @@
+{
+  "suite": "PM-MESSAGE-ENVELOPE-V1",
+  "status": "ACTIVE",
+  "origin": "Rust PM-CBOR-2026 implementation",
+  "protocol": {
+    "field_1": "protocol_version = uint 1",
+    "field_2": "envelope_id = bstr 16",
+    "field_3": "sender_device_id = bstr 16",
+    "field_4": "recipient_device_id = bstr 16",
+    "field_5": "account_epoch = uint32 = Epoch_B",
+    "field_6": "is_prekey_handshake = bool",
+    "field_7": "ratchet_header_bytes = bstr",
+    "field_8": "ciphertext = bstr <= 65552"
+  },
+  "positive": [
+    {
+      "id": "canonical_minimal",
+      "envelope_id_hex": "000102030405060708090a0b0c0d0e0f",
+      "sender_device_id_hex": "101112131415161718191a1b1c1d1e1f",
+      "recipient_device_id_hex": "202122232425262728292a2b2c2d2e2f",
+      "account_epoch": 16909060,
+      "is_prekey_handshake": true,
+      "ratchet_header_hex": "01a0",
+      "ciphertext_hex": "deadbeef",
+      "canonical_cbor_hex": "a801010250000102030405060708090a0b0c0d0e0f0350101112131415161718191a1b1c1d1e1f0450202122232425262728292a2b2c2d2e2f051a0102030406f5074201a00844deadbeef"
+    }
+  ],
+  "negative": [
+    {
+      "id": "wrong_protocol_version",
+      "error": "ERR_INVALID_MESSAGE_ENVELOPE_FIELD",
+      "cbor_hex": "a801020250000102030405060708090a0b0c0d0e0f0350101112131415161718191a1b1c1d1e1f0450202122232425262728292a2b2c2d2e2f051a0102030406f5074201a00844deadbeef"
+    },
+    {
+      "id": "wrong_envelope_id_length",
+      "error": "ERR_INVALID_MESSAGE_ENVELOPE_FIELD",
+      "cbor_hex": "a80101024f000102030405060708090a0b0c0d0e0350101112131415161718191a1b1c1d1e1f0450202122232425262728292a2b2c2d2e2f051a0102030406f5074201a00844deadbeef"
+    },
+    {
+      "id": "unknown_field",
+      "error": "ERR_UNKNOWN_MESSAGE_ENVELOPE_FIELD",
+      "cbor_hex": "a901010250000102030405060708090a0b0c0d0e0f0350101112131415161718191a1b1c1d1e1f0450202122232425262728292a2b2c2d2e2f051a0102030406f5074201a00844deadbeef0900"
+    },
+    {
+      "id": "missing_ciphertext",
+      "error": "ERR_MISSING_MESSAGE_ENVELOPE_FIELD",
+      "cbor_hex": "a701010250000102030405060708090a0b0c0d0e0f0350101112131415161718191a1b1c1d1e1f0450202122232425262728292a2b2c2d2e2f051a0102030406f5074201a0"
+    }
+  ],
+  "notes": [
+    "Duplicate map keys and non-canonical encodings are rejected by PM-CBOR-2026 decode_strict before schema validation.",
+    "Field 7 is validated as a byte string here; nested PrekeyHandshakeHeader validation remains a ratchet-layer concern."
+  ]
+}

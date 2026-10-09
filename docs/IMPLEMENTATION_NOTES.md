@@ -26,7 +26,7 @@ No hex value changed when these were marked resolved: only status/note strings i
 Genuinely open / future (none implemented in Phase A):
 - Skipped-key / out-of-order semantics (MAX_SKIP, normal-message header): `double_ratchet_reorder.json` stays a placeholder.
 - Epoch-transition certificate fields and the account-level device certificate details.
-- A conforming `MessageEnvelopeV1` vector (the CBOR `envelope_illustrative` vector is a generic codec vector, not an instance) is not generated yet.
+- A conforming `MessageEnvelopeV1` vector is now generated at `test-vectors/v1/message_envelope.json`; the CBOR `envelope_illustrative` vector remains a generic codec vector and is not an instance.
 
 ## C. Implementation decisions
 - CBOR codecs are hand-written over raw bytes (no `ciborium`) so strictness cannot be loosened by a library; `fxamacker/cbor/v2` is used only in `internal/cbor/typed`, always behind `DecodeStrict`.
