@@ -24,7 +24,7 @@ No hex value changed when these were marked resolved: only status/note strings i
 | Context encoding, AAD_msg, media nonce, codec bounds | RESOLVED (architecture review lock) |
 
 Genuinely open / future (none implemented in Phase A):
-- Skipped-key / out-of-order semantics (MAX_SKIP, normal-message header): `double_ratchet_reorder.json` stays a placeholder.
+- Reorder/replay vectors for skipped-key and out-of-order semantics: implementation is now in Rust; `double_ratchet_reorder.json` remains placeholder-locked until Step 3.
 - Epoch-transition certificate fields and the account-level device certificate details.
 - A conforming `MessageEnvelopeV1` vector is now generated at `test-vectors/v1/message_envelope.json`; the CBOR `envelope_illustrative` vector remains a generic codec vector and is not an instance.
 
@@ -105,3 +105,10 @@ Not written: Rust/Go implementations of X3DH, ratchet and media. The gate is met
 15. **Dependency rule learned twice** (base64ct 1.8.3, then zeroize_derive 1.5.0): adding a dependency with a plain `cargo test` resolves the NEWEST versions and can pull in crates that need a newer Cargo than 1.81.
    Add dependencies with the MSRV-aware resolver: `set CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback`, `cargo +stable fetch`, clear the variable, then build with `--locked`.
    The lock gained exactly 2 packages for X3DH (`x25519-dalek 2.0.1`, `zeroize_derive 1.4.3`); it now has 51 packages.
+
+## G. Phase B Step 2: Complete Double Ratchet core
+- Implemented bounded skipped-message keys for the receiving chain and for the old chain at a DH-ratchet transition.
+- `MAX_SKIP` is an implementation security bound of 1,000 message keys per chain transition; a 1,000-key global in-memory skipped-key cap prevents unbounded accumulation.
+- Normal-message receives now support authenticated out-of-order delivery within the retained skipped-key window and reject consumed keys as replays without mutating ratchet state.
+- New-ratchet receives derive missing old-chain and new-chain keys before authentication and commit all ratchet/skipped-key state only after AEAD succeeds.
+- Ratchet-state persistence/serialization is intentionally not implemented because no frozen persistence format exists yet; it remains outside this protocol boundary.

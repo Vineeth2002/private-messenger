@@ -6,15 +6,13 @@
 //! Boundary implemented here:
 //! - canonical normal-message header
 //! - linear send-chain advancement
-//! - linear receive-chain advancement
-//! - explicit receiving-side DH ratchet transition
-//! - atomic authentication/commit on both same-chain and new-ratchet receives
+//! - skipped-message keys with bounded out-of-order delivery
+//! - explicit receiving-side DH-ratchet transitions
+//! - replay rejection for consumed skipped keys
+//! - atomic authentication/commit on same-chain and new-ratchet receives
 //!
-//! Not implemented here:
-//! - skipped-message keys / out-of-order delivery
-//! - bounded MAX_SKIP processing
-//! - replay windows across retired ratchet public keys
-//! - persistence/serialization of ratchet state
+//! Ratchet persistence/serialization remains outside this protocol boundary because
+//! no frozen persistence format exists yet.
 
 use chacha20poly1305::{
     aead::{Aead, KeyInit, Payload},
@@ -26,7 +24,8 @@ use zeroize::Zeroizing;
 
 use super::{
     aad_msg, cbor, dh_bytes, kdf_ck, kdf_rk, MessageEnvelopeRef, RatchetError, RatchetKey,
-    RatchetState, Value, ZERO_MESSAGE_NONCE,
+    RatchetState, SkippedMessageKeyId, Value, MAX_SKIP, MAX_SKIPPED_MESSAGE_KEYS,
+    ZERO_MESSAGE_NONCE,
 };
 
 /// Canonical PM-CBOR normal post-handshake header.
@@ -170,30 +169,86 @@ pub fn encrypt_message(
     Ok((header_bytes, ciphertext))
 }
 
-/// Decrypt the next message in the current receiving chain.
-///
-/// Linear delivery is required: the header ratchet public key must equal the
-/// current `DHR`, and `N` must equal `Nr`. Out-of-order/skipped messages are
-/// rejected until the skipped-key boundary is implemented.
-pub fn decrypt_message(
-    state: &mut RatchetState,
-    envelope: MessageEnvelopeRef<'_>,
+fn ensure_skipped_capacity(
+    state: &RatchetState,
+    additional: usize,
+) -> Result<(), RatchetError> {
+    if state
+        .skipped_keys
+        .len()
+        .saturating_add(additional)
+        > MAX_SKIPPED_MESSAGE_KEYS
+    {
+        return Err(RatchetError::MaxSkipExceeded);
+    }
+    Ok(())
+}
+
+fn derive_skipped_range(
+    ck_start: &RatchetKey,
+    ratchet_public: [u8; 32],
+    start: u32,
+    end_exclusive: u32,
+) -> Result<(Zeroizing<RatchetKey>, Vec<(SkippedMessageKeyId, RatchetKey)>), RatchetError> {
+    if end_exclusive < start {
+        return Err(RatchetError::ReplayDetected);
+    }
+    let gap = end_exclusive as u64 - start as u64;
+    if gap > MAX_SKIP as u64 {
+        return Err(RatchetError::MaxSkipExceeded);
+    }
+
+    let mut ck = Zeroizing::new(*ck_start);
+    let mut skipped = Vec::with_capacity(gap as usize);
+    for n in start..end_exclusive {
+        let (ck_next, k_msg) = kdf_ck(&ck);
+        skipped.push((
+            SkippedMessageKeyId {
+                ratchet_public,
+                sequence_number: n,
+            },
+            *k_msg,
+        ));
+        ck = ck_next;
+    }
+    Ok((ck, skipped))
+}
+
+fn derive_target_message_key(
+    ck_start: &RatchetKey,
+    ratchet_public: [u8; 32],
+    start: u32,
+    target: u32,
+) -> Result<
+    (
+        Zeroizing<RatchetKey>,
+        Zeroizing<RatchetKey>,
+        Vec<(SkippedMessageKeyId, RatchetKey)>,
+    ),
+    RatchetError,
+> {
+    if target < start {
+        return Err(RatchetError::ReplayDetected);
+    }
+    if target.checked_add(1).is_none() {
+        return Err(RatchetError::MessageNumberExhausted);
+    }
+    let gap = target as u64 - start as u64;
+    if gap > MAX_SKIP as u64 {
+        return Err(RatchetError::MaxSkipExceeded);
+    }
+
+    let (ck_at_target, skipped) =
+        derive_skipped_range(ck_start, ratchet_public, start, target)?;
+    let (ck_after_target, k_msg) = kdf_ck(&ck_at_target);
+    Ok((ck_after_target, k_msg, skipped))
+}
+
+fn decrypt_with_key(
+    envelope: &MessageEnvelopeRef<'_>,
+    header_bytes: &[u8],
+    k_msg: &RatchetKey,
 ) -> Result<Vec<u8>, RatchetError> {
-    validate_normal_envelope(&envelope)?;
-    let header = NormalMessageHeader::decode(envelope.ratchet_header_bytes)?;
-
-    if state.dhr_pub != Some(header.ratchet_public) {
-        return Err(RatchetError::InvalidInitialState);
-    }
-    if header.sequence_number != state.nr {
-        return Err(RatchetError::InvalidInitialState);
-    }
-
-    let ck_r = state
-        .ck_r
-        .as_ref()
-        .ok_or(RatchetError::InvalidInitialState)?;
-    let (ck_next, k_msg) = kdf_ck(ck_r);
     let aad = aad_msg(
         envelope.protocol_version,
         envelope.envelope_id,
@@ -201,11 +256,11 @@ pub fn decrypt_message(
         envelope.recipient_device_id,
         envelope.account_epoch,
         false,
-        envelope.ratchet_header_bytes,
+        header_bytes,
     );
     let cipher =
-        ChaCha20Poly1305::new_from_slice(k_msg.as_ref()).map_err(|_| RatchetError::AeadDecrypt)?;
-    let plaintext = cipher
+        ChaCha20Poly1305::new_from_slice(k_msg).map_err(|_| RatchetError::AeadDecrypt)?;
+    cipher
         .decrypt(
             Nonce::from_slice(&ZERO_MESSAGE_NONCE),
             Payload {
@@ -213,21 +268,105 @@ pub fn decrypt_message(
                 aad: &aad,
             },
         )
-        .map_err(|_| RatchetError::AeadAuthFailure)?;
+        .map_err(|_| RatchetError::AeadAuthFailure)
+}
 
-    state.nr = state
-        .nr
-        .checked_add(1)
-        .ok_or(RatchetError::InvalidInitialState)?;
-    state.ck_r = Some(ck_next);
+fn commit_skipped_keys(
+    state: &mut RatchetState,
+    skipped: &[(SkippedMessageKeyId, RatchetKey)],
+) -> Result<(), RatchetError> {
+    if skipped
+        .iter()
+        .any(|(id, _)| state.skipped_keys.contains_key(id))
+    {
+        return Err(RatchetError::InvalidInitialState);
+    }
+    for (id, key) in skipped {
+        state.skipped_keys.insert(*id, Zeroizing::new(*key));
+    }
+    Ok(())
+}
+
+fn decrypt_skipped_message(
+    state: &mut RatchetState,
+    envelope: MessageEnvelopeRef<'_>,
+    header: &NormalMessageHeader,
+) -> Result<Vec<u8>, RatchetError> {
+    let id = SkippedMessageKeyId {
+        ratchet_public: header.ratchet_public,
+        sequence_number: header.sequence_number,
+    };
+    let k_msg = state
+        .skipped_keys
+        .get(&id)
+        .map(|key| **key)
+        .ok_or(RatchetError::ReplayDetected)?;
+
+    let plaintext = decrypt_with_key(&envelope, envelope.ratchet_header_bytes, &k_msg)?;
+    state.skipped_keys.remove(&id);
     Ok(plaintext)
+}
+
+/// Decrypt one normal message with bounded out-of-order delivery.
+///
+/// Forward current-chain gaps derive skipped message keys into temporaries and commit
+/// them only after authentication succeeds. A new peer ratchet similarly records
+/// any missing tail of the old chain and missing prefix of the new chain before
+/// authenticating the target message. Consumed skipped keys are one-time keys.
+pub fn decrypt_message(
+    state: &mut RatchetState,
+    envelope: MessageEnvelopeRef<'_>,
+) -> Result<Vec<u8>, RatchetError> {
+    validate_normal_envelope(&envelope)?;
+    let header = NormalMessageHeader::decode(envelope.ratchet_header_bytes)?;
+
+    let skipped_id = SkippedMessageKeyId {
+        ratchet_public: header.ratchet_public,
+        sequence_number: header.sequence_number,
+    };
+    if state.skipped_keys.contains_key(&skipped_id) {
+        return decrypt_skipped_message(state, envelope, &header);
+    }
+
+    if state.dhr_pub == Some(header.ratchet_public) {
+        if header.sequence_number < state.nr {
+            return Err(RatchetError::ReplayDetected);
+        }
+
+        let gap = header.sequence_number as u64 - state.nr as u64;
+        if gap > MAX_SKIP as u64 {
+            return Err(RatchetError::MaxSkipExceeded);
+        }
+        ensure_skipped_capacity(state, gap as usize)?;
+
+        let ck_r = state
+            .ck_r
+            .as_ref()
+            .ok_or(RatchetError::InvalidInitialState)?;
+        let (ck_after, k_msg, skipped) = derive_target_message_key(
+            ck_r,
+            header.ratchet_public,
+            state.nr,
+            header.sequence_number,
+        )?;
+        let plaintext = decrypt_with_key(&envelope, envelope.ratchet_header_bytes, &k_msg)?;
+
+        commit_skipped_keys(state, &skipped)?;
+        state.ck_r = Some(ck_after);
+        state.nr = header
+            .sequence_number
+            .checked_add(1)
+            .ok_or(RatchetError::MessageNumberExhausted)?;
+        return Ok(plaintext);
+    }
+
+    decrypt_new_ratchet_message(state, envelope)
 }
 
 /// Decrypt the first message of a newly observed peer ratchet public key.
 ///
-/// The DH transition is computed entirely on temporaries. The new local sending
-/// ratchet key and both derived chains are committed only after AEAD authentication
-/// succeeds, preserving the atomic-failure invariant.
+/// The DH transition, skipped-key derivation, and AEAD operation all execute against
+/// temporaries. No state is committed until authentication succeeds.
 pub fn decrypt_new_ratchet_message(
     state: &mut RatchetState,
     envelope: MessageEnvelopeRef<'_>,
@@ -247,12 +386,39 @@ fn decrypt_new_ratchet_message_inner(
     if state.dhr_pub == Some(header.ratchet_public) {
         return Err(RatchetError::InvalidInitialState);
     }
-    if header.sequence_number != 0 {
-        return Err(RatchetError::InvalidInitialState);
+    if header.previous_chain_length < state.nr {
+        return Err(RatchetError::ReplayDetected);
     }
 
+    let old_gap = header.previous_chain_length as u64 - state.nr as u64;
+    let new_gap = header.sequence_number as u64;
+    if old_gap > MAX_SKIP as u64 || new_gap > MAX_SKIP as u64 {
+        return Err(RatchetError::MaxSkipExceeded);
+    }
+    if old_gap + new_gap > MAX_SKIPPED_MESSAGE_KEYS as u64 {
+        return Err(RatchetError::MaxSkipExceeded);
+    }
+    header
+        .sequence_number
+        .checked_add(1)
+        .ok_or(RatchetError::MessageNumberExhausted)?;
+    ensure_skipped_capacity(state, (old_gap + new_gap) as usize)?;
+
+    let old_dhr = state.dhr_pub.ok_or(RatchetError::InvalidInitialState)?;
+    let old_skipped = if header.previous_chain_length == state.nr {
+        Vec::new()
+    } else {
+        let ck_r = state
+            .ck_r
+            .as_ref()
+            .ok_or(RatchetError::InvalidInitialState)?;
+        let (_, skipped) =
+            derive_skipped_range(ck_r, old_dhr, state.nr, header.previous_chain_length)?;
+        skipped
+    };
+
     let dh_recv = dh_bytes(&state.dhs_priv, &header.ratchet_public)?;
-    let (rk_temp, ck_r) = kdf_rk(&state.rk, &dh_recv);
+    let (rk_temp, ck_r_initial) = kdf_rk(&state.rk, &dh_recv);
 
     let new_dhs = StaticSecret::from(new_dhs_priv);
     let new_dh_out = {
@@ -264,28 +430,20 @@ fn decrypt_new_ratchet_message_inner(
         *shared.as_bytes()
     };
     let (rk_final, ck_s) = kdf_rk(&rk_temp, &new_dh_out);
-    let (ck_r_after, k_msg) = kdf_ck(&ck_r);
 
-    let aad = aad_msg(
-        envelope.protocol_version,
-        envelope.envelope_id,
-        envelope.sender_device_id,
-        envelope.recipient_device_id,
-        envelope.account_epoch,
-        false,
-        envelope.ratchet_header_bytes,
-    );
-    let cipher =
-        ChaCha20Poly1305::new_from_slice(k_msg.as_ref()).map_err(|_| RatchetError::AeadDecrypt)?;
-    let plaintext = cipher
-        .decrypt(
-            Nonce::from_slice(&ZERO_MESSAGE_NONCE),
-            Payload {
-                msg: envelope.ciphertext,
-                aad: &aad,
-            },
-        )
-        .map_err(|_| RatchetError::AeadAuthFailure)?;
+    let (ck_r_after, k_msg, new_skipped) = derive_target_message_key(
+        &ck_r_initial,
+        header.ratchet_public,
+        0,
+        header.sequence_number,
+    )?;
+
+    let mut skipped = old_skipped;
+    skipped.extend(new_skipped);
+
+    let plaintext = decrypt_with_key(&envelope, envelope.ratchet_header_bytes, &k_msg)?;
+
+    commit_skipped_keys(state, &skipped)?;
 
     state.rk = rk_final;
     state.dhs_priv = Zeroizing::new(new_dhs_priv);
@@ -295,7 +453,10 @@ fn decrypt_new_ratchet_message_inner(
     state.ck_r = Some(ck_r_after);
     state.pn = state.ns;
     state.ns = 0;
-    state.nr = 1;
+    state.nr = header
+        .sequence_number
+        .checked_add(1)
+        .ok_or(RatchetError::MessageNumberExhausted)?;
 
     Ok(plaintext)
 }
@@ -303,6 +464,10 @@ fn decrypt_new_ratchet_message_inner(
 #[cfg(test)]
 #[path = "normal_ratchet_vector_tests.rs"]
 mod vector_tests;
+
+#[cfg(test)]
+#[path = "double_ratchet_complete_tests.rs"]
+mod complete_tests;
 
 #[cfg(test)]
 mod tests {

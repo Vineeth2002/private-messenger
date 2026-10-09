@@ -472,7 +472,8 @@ fn normal_vector_negative_cases_are_enforced_atomically() {
     assert_eq!(err, RatchetError::AeadAuthFailure);
     assert_eq!(state_snapshot(&alice), before);
 
-    // Negative 2: skipped sequence is rejected before KDF/AEAD state advance.
+    // Negative 2: a future skipped message with wrong ciphertext must fail authentication atomically.
+    // Under Step 2, sequence gaps are valid up to MAX_SKIP.
     let follow_header = vector_header(bob_follow);
     let mut bad_header = follow_header.clone();
     bad_header.sequence_number = 2;
@@ -513,7 +514,7 @@ fn normal_vector_negative_cases_are_enforced_atomically() {
         ),
     )
     .unwrap_err();
-    assert_eq!(err, RatchetError::InvalidInitialState);
+    assert_eq!(err, RatchetError::AeadAuthFailure);
     assert_eq!(state_snapshot(&alice_state), before_alice);
 
 }

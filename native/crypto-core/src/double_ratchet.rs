@@ -10,9 +10,11 @@
 //!       CK_next = HMAC-SHA256(CK, 0x02)
 //!       return (CK_next, K_msg)
 //!
-//! This boundary implements the frozen Message 0 path only. Normal post-handshake
-//! messages, skipped-message keys, replay windows, and the complete DH ratchet state
-//! machine are still outside this boundary.
+//! This boundary contains the frozen Message 0 path and the shared ratchet state.
+//! The post-handshake message state machine lives in `normal_ratchet_linear`, including
+//! skipped-message keys and bounded out-of-order delivery.
+
+use std::collections::BTreeMap;
 
 use chacha20poly1305::{aead::{Aead, KeyInit, Payload}, ChaCha20Poly1305, Nonce};
 use hkdf::Hkdf;
@@ -45,6 +47,18 @@ const _: () = assert!(MSG_AAD.len() == 13);
 type HmacSha256 = Hmac<Sha256>;
 pub type RatchetKey = [u8; 32];
 
+/// Maximum number of message keys that may be skipped in one chain transition.
+/// This is an implementation security bound, not a protocol/vector constant.
+pub(crate) const MAX_SKIP: u32 = 1_000;
+/// Global cap on retained skipped-message keys for one in-memory ratchet state.
+pub(crate) const MAX_SKIPPED_MESSAGE_KEYS: usize = MAX_SKIP as usize;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct SkippedMessageKeyId {
+    pub(crate) ratchet_public: [u8; 32],
+    pub(crate) sequence_number: u32,
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum RatchetError {
     #[error("non-contributory X25519 output")]
@@ -61,6 +75,12 @@ pub enum RatchetError {
     RecipientOpkIdMismatch,
     #[error("ratchet state is not in the expected initial state")]
     InvalidInitialState,
+    #[error("maximum skipped-message bound exceeded")]
+    MaxSkipExceeded,
+    #[error("message number exhausted")]
+    MessageNumberExhausted,
+    #[error("replayed or expired message")]
+    ReplayDetected,
     #[error("message authentication failed")]
     AeadAuthFailure,
     #[error("certificate verification failed: {0}")]
@@ -235,6 +255,7 @@ pub struct RatchetState {
     ns: u32,
     nr: u32,
     pn: u32,
+    skipped_keys: BTreeMap<SkippedMessageKeyId, Zeroizing<RatchetKey>>,
 }
 
 impl RatchetState {
@@ -264,6 +285,7 @@ impl RatchetState {
             ns: 0,
             nr: 0,
             pn: 0,
+            skipped_keys: BTreeMap::new(),
         })
     }
 
@@ -280,6 +302,7 @@ impl RatchetState {
             ns: 0,
             nr: 0,
             pn: 0,
+            skipped_keys: BTreeMap::new(),
         }
     }
 }
