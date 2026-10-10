@@ -1,0 +1,28 @@
+[Error]
+enum CryptoError {
+    "NonCanonicalInteger",
+    "DuplicateMapKey",
+    "FloatProhibited",
+    "IndefiniteLengthProhibited",
+    "UnsortedMapKeys",
+    "TrailingBytes",
+    "MalformedCbor",
+    "UnsupportedItem",
+    "LimitExceeded",
+    "EntropyFailure",
+};
+
+interface AccountContext {
+    bytes account_id();
+    bytes device_id();
+    bytes dsk_public_key();
+    bytes ddhk_public_key();
+};
+
+namespace pm_crypto_core {
+    [Throws=CryptoError]
+    bytes decode_strict_canonical(bytes input);
+
+    [Throws=CryptoError]
+    AccountContext identity_initialize();
+};

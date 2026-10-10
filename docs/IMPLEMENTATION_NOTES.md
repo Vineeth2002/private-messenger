@@ -130,3 +130,9 @@ Not written: Rust/Go implementations of X3DH, ratchet and media. The gate is met
 - The shared vector freezes the HPKE cryptographic flow only. `09-notification-hpke.md` freezes the notification contents and the stateless Base requirement, but does not freeze an exact PM-CBOR field map or push-specific `info`/AAD constants; none were invented in this step.
 - The push channel remains a wake-up hint only and provides confidentiality, not sender authentication. Application content must be authenticated by the normal messenger connection before presentation.
 - No Go HPKE implementation is introduced at this boundary because the gateway remains a delivery/control plane and the notification cryptography is client-side.
+
+## J. Phase B Step 5: Key Transparency deferral
+- The cryptographic Key Transparency implementation is intentionally deferred because the current architectural boundary freezes only the policy (Sparse Merkle Tree, Signed Tree Heads, witnesses, client high-water state, and VERIFIED/DEGRADED/SECURITY FAILURE behavior).
+- The repository does not yet freeze the authoritative TransparencyLeafV1 field map, STH wire format, SMT hash/domain rules, inclusion/consistency proof encoding, witness signature format, or quorum/equivocation rules. These must not be invented during implementation.
+- Real-time E2EE messaging does not depend on completed Key Transparency. KT remains a required security boundary before the production-grade full messenger security claim.
+- Step 6 (UniFFI) is implemented and runtime-verified through the Android native bridge smoke test. Key Transparency specification freeze and implementation remain scheduled before the production-grade identity/security claim.

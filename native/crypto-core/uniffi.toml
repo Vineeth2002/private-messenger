@@ -1,0 +1,5 @@
+[bindings.kotlin]
+package_name = "org.sovereign.pm.crypto.uniffi"
+android = true
+android_cleaner = true
+cdylib_name = "pm_crypto_core"
