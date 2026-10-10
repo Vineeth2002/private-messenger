@@ -136,3 +136,20 @@ Not written: Rust/Go implementations of X3DH, ratchet and media. The gate is met
 - The repository does not yet freeze the authoritative TransparencyLeafV1 field map, STH wire format, SMT hash/domain rules, inclusion/consistency proof encoding, witness signature format, or quorum/equivocation rules. These must not be invented during implementation.
 - Real-time E2EE messaging does not depend on completed Key Transparency. KT remains a required security boundary before the production-grade full messenger security claim.
 - Step 6 (UniFFI) is implemented and runtime-verified through the Android native bridge smoke test. Key Transparency specification freeze and implementation remain scheduled before the production-grade identity/security claim.
+
+## K. Phase B Step 5: Key Transparency V1 cryptographic implementation
+
+Section J is retained as the historical record of the pre-freeze deferral. The frozen V1 artifacts were subsequently implemented as
+the independent test/reference layer and Rust cryptographic verification boundary.
+
+Verified on the owner's Windows checkout:
+- `py tools\check_kt_v1_vectors.py` passes the KT V1 reference/vector suite.
+- `py tools\check_vectors.py` continues to pass the general vector suite with the KT V1 active manifest entries.
+- `cargo test --locked` passes the existing Rust suite plus all six KT V1 integration tests.
+- `go test ./...` remains green for the gateway.
+- `git diff --check` passes.
+
+The KT history inclusion verifier also enforces the frozen `sequence == index + 1` publication-order invariant.
+
+This step does not implement gateway/API transport, PostgreSQL transparency-node persistence, witness-service integration,
+account-level device authorization, epoch-transition authorization, recovery/revocation workflow, or client persistence/serialization.

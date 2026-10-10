@@ -5,8 +5,11 @@ with client-owned cryptographic state, server as delivery/control plane only.
 
 **Status: Phase A is complete.** The Phase A gate was met on 2026-10-05 on a real Windows machine (Rust 1.81.0, Go 1.22.6):
 both builds, both CBOR test suites, the independent Python vector checker and 101-vector Rust/Go parity all passed.
-Phase B (PM-BI-X3DH-1, Double Ratchet, media AEAD, HPKE push, transparency) is **unlocked and in progress** (PM-BI-X3DH-1, the core Double Ratchet state machine, and deterministic reorder/replay vectors are implemented and verified in Rust; media, HPKE push cryptographic boundary is implemented and verified; transparency integration remains); it proceeds one
-boundary at a time, each proven against `test-vectors/v1/` before the next. Not for production use. Not audited.
+Phase B (PM-BI-X3DH-1, Double Ratchet, media AEAD, HPKE push, transparency) is **in progress**: PM-BI-X3DH-1, the core
+Double Ratchet state machine, deterministic reorder/replay vectors, media/HPKE cryptographic boundaries, and the KT V1
+reference/vector gate plus Rust cryptographic boundary are implemented and verified on the owner's Windows machine. The
+remaining KT work is the gateway/API, persistence, witness-service integration, and device authorization boundaries. It proceeds
+one boundary at a time, each proven against `test-vectors/v1/` before the next. Not for production use. Not audited.
 
 ## Non-claims
 Hosted-in-India is not "all packets stay in India". APNs/FCM are external boundaries. Ed25519/X25519

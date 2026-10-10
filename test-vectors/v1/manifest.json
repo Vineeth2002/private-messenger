@@ -57,9 +57,24 @@
       "sha256": "b34990984b060290b9d1d0eac0aa6944498ba2a6567561e5fdd1151e56d97ad5"
     },
     {
+      "path": "transparency_equivocation.json",
+      "status": "ACTIVE",
+      "sha256": "22048cdfea2bca432897d684d6c9fcc959b4c78ccd6f738db7687cf002b0378c"
+    },
+    {
+      "path": "transparency_history_proofs.json",
+      "status": "ACTIVE",
+      "sha256": "367d4c7ad48be072b1a495b9482876d536d0e31a9df1f4f7c9b001659ef9f53b"
+    },
+    {
       "path": "transparency_leaf.json",
-      "status": "PLACEHOLDER_LOCKED",
-      "sha256": "16f205f28d2afdfa5b0519d42b3989510a4d21bf5e0f04df912bb24896eba11c"
+      "status": "ACTIVE",
+      "sha256": "4da4cff047e9f8d15cc3221117d8d9fc871a705091e44d45a4575fc9ac01afb0"
+    },
+    {
+      "path": "transparency_smt_proofs.json",
+      "status": "ACTIVE",
+      "sha256": "7c40dd85d814ec3ec149f5e39b16b472db34f7f8f4e72352c4dbc9c70bb34062"
     }
   ]
 }

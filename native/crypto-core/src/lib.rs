@@ -21,6 +21,8 @@ pub mod recovery;
 #[deny(unsafe_code)]
 pub mod transparency;
 #[deny(unsafe_code)]
+pub mod transparency_v1;
+#[deny(unsafe_code)]
 pub mod x3dh;
 
 #[deny(unsafe_code)]
