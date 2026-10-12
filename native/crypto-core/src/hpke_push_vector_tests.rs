@@ -38,23 +38,33 @@ fn hpke_push_vector_matches_stateless_base() {
 
     let sk_r_static = StaticSecret::from(sk_r);
     let pk_r = PublicKey::from(&sk_r_static).to_bytes();
-    assert_eq!(hex_encode(pk_r), c["recipient_public_hex"].as_str().unwrap());
+    assert_eq!(
+        hex_encode(pk_r),
+        c["recipient_public_hex"].as_str().unwrap()
+    );
 
     let sk_e_static = StaticSecret::from(sk_e);
     let (enc, shared_secret) = dhkem_encap(&sk_e_static, &pk_r).unwrap();
     assert_eq!(hex_encode(enc), c["enc_hex"].as_str().unwrap());
-    assert_eq!(hex_encode(&shared_secret), c["shared_secret_hex"].as_str().unwrap());
+    assert_eq!(
+        hex_encode(&shared_secret),
+        c["shared_secret_hex"].as_str().unwrap()
+    );
 
     let (key, base_nonce) = key_schedule_base(&shared_secret, &info).unwrap();
     assert_eq!(hex_encode(&key), c["key_hex"].as_str().unwrap());
-    assert_eq!(hex_encode(base_nonce), c["base_nonce_hex"].as_str().unwrap());
+    assert_eq!(
+        hex_encode(base_nonce),
+        c["base_nonce_hex"].as_str().unwrap()
+    );
 
-    let (enc2, ciphertext) = seal_base_stateless_with_ephemeral(
-        &pk_r, &info, &aad, &plaintext, sk_e
-    )
-    .unwrap();
+    let (enc2, ciphertext) =
+        seal_base_stateless_with_ephemeral(&pk_r, &info, &aad, &plaintext, sk_e).unwrap();
     assert_eq!(enc2.enc, enc);
-    assert_eq!(hex_encode(&ciphertext), c["ciphertext_hex"].as_str().unwrap());
+    assert_eq!(
+        hex_encode(&ciphertext),
+        c["ciphertext_hex"].as_str().unwrap()
+    );
 
     let opened = open_base_stateless(sk_r, &enc, &info, &aad, &ciphertext).unwrap();
     assert_eq!(opened, plaintext);

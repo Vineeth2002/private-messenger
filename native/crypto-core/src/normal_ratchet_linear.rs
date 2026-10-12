@@ -169,16 +169,8 @@ pub fn encrypt_message(
     Ok((header_bytes, ciphertext))
 }
 
-fn ensure_skipped_capacity(
-    state: &RatchetState,
-    additional: usize,
-) -> Result<(), RatchetError> {
-    if state
-        .skipped_keys
-        .len()
-        .saturating_add(additional)
-        > MAX_SKIPPED_MESSAGE_KEYS
-    {
+fn ensure_skipped_capacity(state: &RatchetState, additional: usize) -> Result<(), RatchetError> {
+    if state.skipped_keys.len().saturating_add(additional) > MAX_SKIPPED_MESSAGE_KEYS {
         return Err(RatchetError::MaxSkipExceeded);
     }
     Ok(())
@@ -189,7 +181,13 @@ fn derive_skipped_range(
     ratchet_public: [u8; 32],
     start: u32,
     end_exclusive: u32,
-) -> Result<(Zeroizing<RatchetKey>, Vec<(SkippedMessageKeyId, RatchetKey)>), RatchetError> {
+) -> Result<
+    (
+        Zeroizing<RatchetKey>,
+        Vec<(SkippedMessageKeyId, RatchetKey)>,
+    ),
+    RatchetError,
+> {
     if end_exclusive < start {
         return Err(RatchetError::ReplayDetected);
     }
@@ -238,8 +236,7 @@ fn derive_target_message_key(
         return Err(RatchetError::MaxSkipExceeded);
     }
 
-    let (ck_at_target, skipped) =
-        derive_skipped_range(ck_start, ratchet_public, start, target)?;
+    let (ck_at_target, skipped) = derive_skipped_range(ck_start, ratchet_public, start, target)?;
     let (ck_after_target, k_msg) = kdf_ck(&ck_at_target);
     Ok((ck_after_target, k_msg, skipped))
 }
@@ -258,8 +255,7 @@ fn decrypt_with_key(
         false,
         header_bytes,
     );
-    let cipher =
-        ChaCha20Poly1305::new_from_slice(k_msg).map_err(|_| RatchetError::AeadDecrypt)?;
+    let cipher = ChaCha20Poly1305::new_from_slice(k_msg).map_err(|_| RatchetError::AeadDecrypt)?;
     cipher
         .decrypt(
             Nonce::from_slice(&ZERO_MESSAGE_NONCE),

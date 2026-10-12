@@ -48,7 +48,12 @@ pub enum X3dhError {
 }
 
 /// `Context = IK_dh_A || IK_dh_B || Epoch_A (4 B BE) || Epoch_B (4 B BE)`.
-pub fn x3dh_context(ik_a_pub: &[u8; 32], ik_b_pub: &[u8; 32], epoch_a: u32, epoch_b: u32) -> [u8; 72] {
+pub fn x3dh_context(
+    ik_a_pub: &[u8; 32],
+    ik_b_pub: &[u8; 32],
+    epoch_a: u32,
+    epoch_b: u32,
+) -> [u8; 72] {
     let mut c = [0u8; 72];
     c[..32].copy_from_slice(ik_a_pub);
     c[32..64].copy_from_slice(ik_b_pub);
@@ -197,7 +202,10 @@ pub fn cert_dh_sign(
     ddhk_pub: &[u8; 32],
     timestamp: u64,
 ) -> [u8; 64] {
-    dsk.sign(&cert_dh_transcript(account_id, device_id, ddhk_pub, timestamp)).to_bytes()
+    dsk.sign(&cert_dh_transcript(
+        account_id, device_id, ddhk_pub, timestamp,
+    ))
+    .to_bytes()
 }
 
 /// Recipient-side check. Any failure must abort the handshake (fail closed).
@@ -211,8 +219,11 @@ pub fn cert_dh_verify(
 ) -> Result<(), X3dhError> {
     let vk = VerifyingKey::from_bytes(dsk_pub).map_err(|_| X3dhError::BadPublicKey)?;
     let sig = Signature::from_bytes(cert);
-    vk.verify_strict(&cert_dh_transcript(account_id, device_id, ddhk_pub, timestamp), &sig)
-        .map_err(|_| X3dhError::BadCertDh)
+    vk.verify_strict(
+        &cert_dh_transcript(account_id, device_id, ddhk_pub, timestamp),
+        &sig,
+    )
+    .map_err(|_| X3dhError::BadCertDh)
 }
 
 #[cfg(test)]
@@ -222,7 +233,9 @@ mod tests {
 
     fn hex_decode(s: &str) -> Vec<u8> {
         assert!(s.len() % 2 == 0, "odd hex length");
-        (0..s.len() / 2).map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap()).collect()
+        (0..s.len() / 2)
+            .map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap())
+            .collect()
     }
     fn hex_encode(b: &[u8]) -> String {
         b.iter().map(|x| format!("{:02x}", x)).collect()
@@ -231,8 +244,12 @@ mod tests {
         hex_decode(s).try_into().expect("wrong length")
     }
     fn load() -> J {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-vectors/v1/bi_x3dh_handshake.json");
-        serde_json::from_str(&std::fs::read_to_string(path).expect("vector file")).expect("valid JSON")
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../test-vectors/v1/bi_x3dh_handshake.json"
+        );
+        serde_json::from_str(&std::fs::read_to_string(path).expect("vector file"))
+            .expect("valid JSON")
     }
     fn secret(v: &J, k: &str) -> StaticSecret {
         StaticSecret::from(arr::<32>(v[k].as_str().unwrap()))
@@ -241,16 +258,28 @@ mod tests {
         arr::<32>(v[k].as_str().unwrap())
     }
     fn case<'a>(v: &'a J, id: &str) -> &'a J {
-        v["cases"].as_array().unwrap().iter().find(|c| c["id"] == id).unwrap()
+        v["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["id"] == id)
+            .unwrap()
     }
     fn epochs(i: &J) -> (u32, u32) {
-        (i["epoch_a"].as_u64().unwrap() as u32, i["epoch_b"].as_u64().unwrap() as u32)
+        (
+            i["epoch_a"].as_u64().unwrap() as u32,
+            i["epoch_b"].as_u64().unwrap() as u32,
+        )
     }
 
     #[test]
     fn labels_match_the_vector_file() {
         let v = load();
-        for (key, bytes) in [("X3DH_SALT", X3DH_SALT), ("X3DH_INFO", X3DH_INFO), ("DH_BIND", DH_BIND)] {
+        for (key, bytes) in [
+            ("X3DH_SALT", X3DH_SALT),
+            ("X3DH_INFO", X3DH_INFO),
+            ("DH_BIND", DH_BIND),
+        ] {
             let l = &v["labels"][key];
             assert_eq!(hex_encode(bytes), l["hex"].as_str().unwrap(), "{key}");
             assert_eq!(bytes.len() as u64, l["length"].as_u64().unwrap(), "{key}");
@@ -269,45 +298,99 @@ mod tests {
             // public keys follow from the private keys
             for k in ["ik_a", "ek_a", "ik_b", "spk_b"] {
                 let p = PublicKey::from(&secret(i, &format!("{k}_priv"))).to_bytes();
-                assert_eq!(hex_encode(&p), i[format!("{k}_pub")].as_str().unwrap(), "{id}: {k}");
+                assert_eq!(
+                    hex_encode(&p),
+                    i[format!("{k}_pub")].as_str().unwrap(),
+                    "{id}: {k}"
+                );
             }
 
             let ik_a = secret(i, "ik_a_priv");
             let ek_a = secret(i, "ek_a_priv");
             let ik_b = secret(i, "ik_b_priv");
             let spk_b = secret(i, "spk_b_priv");
-            let opk_b = if has_opk { Some(secret(i, "opk_b_priv")) } else { None };
+            let opk_b = if has_opk {
+                Some(secret(i, "opk_b_priv"))
+            } else {
+                None
+            };
             let (ik_a_pub, ek_a_pub) = (pubkey(i, "ik_a_pub"), pubkey(i, "ek_a_pub"));
             let (ik_b_pub, spk_b_pub) = (pubkey(i, "ik_b_pub"), pubkey(i, "spk_b_pub"));
-            let opk_b_pub = if has_opk { Some(pubkey(i, "opk_b_pub")) } else { None };
+            let opk_b_pub = if has_opk {
+                Some(pubkey(i, "opk_b_pub"))
+            } else {
+                None
+            };
 
             // DH1..DH4, IKM, PRK, Context (initiator side)
             let dhs = initiator_dhs(&ik_a, &ek_a, &ik_b_pub, &spk_b_pub, opk_b_pub.as_ref());
             assert_eq!(dhs.len(), if has_opk { 4 } else { 3 }, "{id}");
             for (n, dh) in dhs.iter().enumerate() {
-                assert_eq!(hex_encode(dh.as_bytes()), d[format!("dh{}", n + 1)].as_str().unwrap(), "{id}: dh{}", n + 1);
+                assert_eq!(
+                    hex_encode(dh.as_bytes()),
+                    d[format!("dh{}", n + 1)].as_str().unwrap(),
+                    "{id}: dh{}",
+                    n + 1
+                );
             }
             let ikm = ikm_of(&dhs);
             assert_eq!(ikm.len() as u64, d["ikm_length"].as_u64().unwrap(), "{id}");
             assert_eq!(hex_encode(&ikm), d["ikm"].as_str().unwrap(), "{id}: ikm");
-            assert_eq!(hex_encode(&hkdf_extract(X3DH_SALT, &ikm)[..]), d["prk"].as_str().unwrap(), "{id}: prk");
+            assert_eq!(
+                hex_encode(&hkdf_extract(X3DH_SALT, &ikm)[..]),
+                d["prk"].as_str().unwrap(),
+                "{id}: prk"
+            );
             let ctx = x3dh_context(&ik_a_pub, &ik_b_pub, ea, eb);
-            assert_eq!(ctx.len() as u64, d["context_length"].as_u64().unwrap(), "{id}");
-            assert_eq!(hex_encode(&ctx), d["context"].as_str().unwrap(), "{id}: context");
+            assert_eq!(
+                ctx.len() as u64,
+                d["context_length"].as_u64().unwrap(),
+                "{id}"
+            );
+            assert_eq!(
+                hex_encode(&ctx),
+                d["context"].as_str().unwrap(),
+                "{id}: context"
+            );
 
             // the session key, from BOTH sides
-            let sk_a = initiator_derive_sk(&ik_a, &ek_a, &ik_b_pub, &spk_b_pub, opk_b_pub.as_ref(), ea, eb).unwrap();
-            assert_eq!(hex_encode(&sk_a[..]), d["sk"].as_str().unwrap(), "{id}: initiator sk");
-            let sk_b = responder_derive_sk(&ik_b, &spk_b, opk_b.as_ref(), &ik_a_pub, &ek_a_pub, ea, eb).unwrap();
-            assert_eq!(hex_encode(&sk_b[..]), d["sk"].as_str().unwrap(), "{id}: responder sk");
+            let sk_a = initiator_derive_sk(
+                &ik_a,
+                &ek_a,
+                &ik_b_pub,
+                &spk_b_pub,
+                opk_b_pub.as_ref(),
+                ea,
+                eb,
+            )
+            .unwrap();
+            assert_eq!(
+                hex_encode(&sk_a[..]),
+                d["sk"].as_str().unwrap(),
+                "{id}: initiator sk"
+            );
+            let sk_b =
+                responder_derive_sk(&ik_b, &spk_b, opk_b.as_ref(), &ik_a_pub, &ek_a_pub, ea, eb)
+                    .unwrap();
+            assert_eq!(
+                hex_encode(&sk_b[..]),
+                d["sk"].as_str().unwrap(),
+                "{id}: responder sk"
+            );
         }
     }
 
     #[test]
     fn the_one_time_prekey_changes_the_session_key() {
         let v = load();
-        let a = case(&v, "with_opk")["derived"]["sk"].as_str().unwrap().to_string();
-        let b = case(&v, "without_opk")["derived"]["sk"].as_str().unwrap().to_string();
+        let a = case(&v, "with_opk")["derived"]["sk"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let b = case(&v, "without_opk")["derived"]["sk"]
+            .as_str()
+            .unwrap()
+            .to_string();
         assert_ne!(a, b);
     }
 
@@ -319,8 +402,13 @@ mod tests {
         let (ea, eb) = epochs(i);
         assert_ne!(ea, eb, "test epochs must differ");
         let sk = initiator_derive_sk(
-            &secret(i, "ik_a_priv"), &secret(i, "ek_a_priv"), &pubkey(i, "ik_b_pub"), &pubkey(i, "spk_b_pub"),
-            Some(&pubkey(i, "opk_b_pub")), eb, ea,
+            &secret(i, "ik_a_priv"),
+            &secret(i, "ek_a_priv"),
+            &pubkey(i, "ik_b_pub"),
+            &pubkey(i, "spk_b_pub"),
+            Some(&pubkey(i, "opk_b_pub")),
+            eb,
+            ea,
         )
         .unwrap();
         assert_ne!(hex_encode(&sk[..]), c["derived"]["sk"].as_str().unwrap());
@@ -332,10 +420,19 @@ mod tests {
         let i = &case(&v, "with_opk")["inputs"];
         let (ea, eb) = epochs(i);
         let sk = responder_derive_sk(
-            &secret(i, "ik_b_priv"), &secret(i, "spk_b_priv"), None, &pubkey(i, "ik_a_pub"), &pubkey(i, "ek_a_pub"), ea, eb,
+            &secret(i, "ik_b_priv"),
+            &secret(i, "spk_b_priv"),
+            None,
+            &pubkey(i, "ik_a_pub"),
+            &pubkey(i, "ek_a_pub"),
+            ea,
+            eb,
         )
         .unwrap();
-        assert_ne!(hex_encode(&sk[..]), case(&v, "with_opk")["derived"]["sk"].as_str().unwrap());
+        assert_ne!(
+            hex_encode(&sk[..]),
+            case(&v, "with_opk")["derived"]["sk"].as_str().unwrap()
+        );
     }
 
     #[test]
@@ -345,11 +442,23 @@ mod tests {
         let (ea, eb) = epochs(i);
         let zero = [0u8; 32]; // low-order point: X25519 output is all zero
         let r = initiator_derive_sk(
-            &secret(i, "ik_a_priv"), &secret(i, "ek_a_priv"), &pubkey(i, "ik_b_pub"), &zero, None, ea, eb,
+            &secret(i, "ik_a_priv"),
+            &secret(i, "ek_a_priv"),
+            &pubkey(i, "ik_b_pub"),
+            &zero,
+            None,
+            ea,
+            eb,
         );
         assert_eq!(r.unwrap_err(), X3dhError::NonContributoryDh);
         let r = responder_derive_sk(
-            &secret(i, "ik_b_priv"), &secret(i, "spk_b_priv"), None, &zero, &pubkey(i, "ek_a_pub"), ea, eb,
+            &secret(i, "ik_b_priv"),
+            &secret(i, "spk_b_priv"),
+            None,
+            &zero,
+            &pubkey(i, "ek_a_pub"),
+            ea,
+            eb,
         );
         assert_eq!(r.unwrap_err(), X3dhError::NonContributoryDh);
     }
@@ -388,10 +497,24 @@ mod tests {
         assert_eq!(hex_encode(&tr), t["transcript_hex"].as_str().unwrap());
 
         let dsk = SigningKey::from_bytes(&c.seed);
-        assert_eq!(hex_encode(&dsk.verifying_key().to_bytes()), hex_encode(&c.dsk_pub));
+        assert_eq!(
+            hex_encode(&dsk.verifying_key().to_bytes()),
+            hex_encode(&c.dsk_pub)
+        );
         // Ed25519 is deterministic: our signature must equal the reference signature.
-        assert_eq!(cert_dh_sign(&dsk, &c.account_id, &c.device_id, &c.ddhk_pub, c.ts), c.sig);
-        assert!(cert_dh_verify(&c.dsk_pub, &c.account_id, &c.device_id, &c.ddhk_pub, c.ts, &c.sig).is_ok());
+        assert_eq!(
+            cert_dh_sign(&dsk, &c.account_id, &c.device_id, &c.ddhk_pub, c.ts),
+            c.sig
+        );
+        assert!(cert_dh_verify(
+            &c.dsk_pub,
+            &c.account_id,
+            &c.device_id,
+            &c.ddhk_pub,
+            c.ts,
+            &c.sig
+        )
+        .is_ok());
     }
 
     #[test]
@@ -399,21 +522,65 @@ mod tests {
         let c = cert();
         let bad = |r: Result<(), X3dhError>| assert_eq!(r.unwrap_err(), X3dhError::BadCertDh);
 
-        bad(cert_dh_verify(&c.dsk_pub, &c.account_id, &c.device_id, &c.ddhk_pub, c.ts + 1, &c.sig));
+        bad(cert_dh_verify(
+            &c.dsk_pub,
+            &c.account_id,
+            &c.device_id,
+            &c.ddhk_pub,
+            c.ts + 1,
+            &c.sig,
+        ));
         let mut acct = c.account_id;
         acct[0] ^= 1;
-        bad(cert_dh_verify(&c.dsk_pub, &acct, &c.device_id, &c.ddhk_pub, c.ts, &c.sig));
+        bad(cert_dh_verify(
+            &c.dsk_pub,
+            &acct,
+            &c.device_id,
+            &c.ddhk_pub,
+            c.ts,
+            &c.sig,
+        ));
         let mut dev = c.device_id;
         dev[15] ^= 1;
-        bad(cert_dh_verify(&c.dsk_pub, &c.account_id, &dev, &c.ddhk_pub, c.ts, &c.sig));
+        bad(cert_dh_verify(
+            &c.dsk_pub,
+            &c.account_id,
+            &dev,
+            &c.ddhk_pub,
+            c.ts,
+            &c.sig,
+        ));
         let mut ddhk = c.ddhk_pub;
         ddhk[31] ^= 1;
-        bad(cert_dh_verify(&c.dsk_pub, &c.account_id, &c.device_id, &ddhk, c.ts, &c.sig));
+        bad(cert_dh_verify(
+            &c.dsk_pub,
+            &c.account_id,
+            &c.device_id,
+            &ddhk,
+            c.ts,
+            &c.sig,
+        ));
         let mut sig = c.sig;
         sig[63] ^= 1;
-        bad(cert_dh_verify(&c.dsk_pub, &c.account_id, &c.device_id, &c.ddhk_pub, c.ts, &sig));
+        bad(cert_dh_verify(
+            &c.dsk_pub,
+            &c.account_id,
+            &c.device_id,
+            &c.ddhk_pub,
+            c.ts,
+            &sig,
+        ));
         // a different device signing key must not verify
-        let other = SigningKey::from_bytes(&[7u8; 32]).verifying_key().to_bytes();
-        bad(cert_dh_verify(&other, &c.account_id, &c.device_id, &c.ddhk_pub, c.ts, &c.sig));
+        let other = SigningKey::from_bytes(&[7u8; 32])
+            .verifying_key()
+            .to_bytes();
+        bad(cert_dh_verify(
+            &other,
+            &c.account_id,
+            &c.device_id,
+            &c.ddhk_pub,
+            c.ts,
+            &c.sig,
+        ));
     }
 }

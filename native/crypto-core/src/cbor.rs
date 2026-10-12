@@ -185,24 +185,40 @@ fn read_arg(input: &[u8], pos: &mut usize, ai: u8) -> Result<u64, CborError> {
         0..=23 => Ok(ai as u64),
         24 => {
             let v = take(input, pos, 1)?[0] as u64;
-            if v < 24 { Err(CborError::NonCanonicalInteger) } else { Ok(v) }
+            if v < 24 {
+                Err(CborError::NonCanonicalInteger)
+            } else {
+                Ok(v)
+            }
         }
         25 => {
             let s = take(input, pos, 2)?;
             let v = u16::from_be_bytes([s[0], s[1]]) as u64;
-            if v <= 0xff { Err(CborError::NonCanonicalInteger) } else { Ok(v) }
+            if v <= 0xff {
+                Err(CborError::NonCanonicalInteger)
+            } else {
+                Ok(v)
+            }
         }
         26 => {
             let s = take(input, pos, 4)?;
             let v = u32::from_be_bytes([s[0], s[1], s[2], s[3]]) as u64;
-            if v <= 0xffff { Err(CborError::NonCanonicalInteger) } else { Ok(v) }
+            if v <= 0xffff {
+                Err(CborError::NonCanonicalInteger)
+            } else {
+                Ok(v)
+            }
         }
         27 => {
             let s = take(input, pos, 8)?;
             let mut a = [0u8; 8];
             a.copy_from_slice(s);
             let v = u64::from_be_bytes(a);
-            if v <= 0xffff_ffff { Err(CborError::NonCanonicalInteger) } else { Ok(v) }
+            if v <= 0xffff_ffff {
+                Err(CborError::NonCanonicalInteger)
+            } else {
+                Ok(v)
+            }
         }
         _ => Err(CborError::MalformedCbor),
     }
@@ -319,17 +335,30 @@ mod tests {
     use super::*;
 
     fn h(s: &str) -> Vec<u8> {
-        (0..s.len() / 2).map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap()).collect()
+        (0..s.len() / 2)
+            .map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap())
+            .collect()
     }
 
     #[test]
     fn integer_heads() {
-        for (n, hex) in [(0i128, "00"), (23, "17"), (24, "1818"), (255, "18ff"), (256, "190100"),
-                         (65535, "19ffff"), (65536, "1a00010000"), (10, "0a")] {
+        for (n, hex) in [
+            (0i128, "00"),
+            (23, "17"),
+            (24, "1818"),
+            (255, "18ff"),
+            (256, "190100"),
+            (65535, "19ffff"),
+            (65536, "1a00010000"),
+            (10, "0a"),
+        ] {
             assert_eq!(encode_canonical(&Value::Int(n)).unwrap(), h(hex));
             assert_eq!(decode_strict(&h(hex)).unwrap(), Value::Int(n));
         }
-        assert_eq!(decode_strict(&h("180a")), Err(CborError::NonCanonicalInteger));
+        assert_eq!(
+            decode_strict(&h("180a")),
+            Err(CborError::NonCanonicalInteger)
+        );
     }
 
     #[test]
@@ -366,13 +395,22 @@ mod tests {
         let mut ok = vec![0x5a, 0x00, 0x01, 0x00, 0x10];
         ok.extend(vec![0u8; MAX_BSTR]);
         assert!(decode_strict(&ok).is_ok());
-        assert_eq!(decode_strict(&[0x5a, 0x00, 0x01, 0x00, 0x11]), Err(CborError::LimitExceeded));
-        assert_eq!(encode_canonical(&Value::Bytes(vec![0; MAX_BSTR + 1])), Err(CborError::LimitExceeded));
+        assert_eq!(
+            decode_strict(&[0x5a, 0x00, 0x01, 0x00, 0x11]),
+            Err(CborError::LimitExceeded)
+        );
+        assert_eq!(
+            encode_canonical(&Value::Bytes(vec![0; MAX_BSTR + 1])),
+            Err(CborError::LimitExceeded)
+        );
     }
 
     #[test]
     fn wire_input_limit() {
-        assert_eq!(decode_strict(&vec![0u8; MAX_WIRE_INPUT + 1]), Err(CborError::LimitExceeded));
+        assert_eq!(
+            decode_strict(&vec![0u8; MAX_WIRE_INPUT + 1]),
+            Err(CborError::LimitExceeded)
+        );
     }
 
     #[test]
@@ -385,7 +423,10 @@ mod tests {
 
     #[test]
     fn duplicate_keys_rejected_by_encoder() {
-        let m = Value::Map(vec![(Value::Int(1), Value::Int(1)), (Value::Int(1), Value::Int(2))]);
+        let m = Value::Map(vec![
+            (Value::Int(1), Value::Int(1)),
+            (Value::Int(1), Value::Int(2)),
+        ]);
         assert_eq!(encode_canonical(&m), Err(CborError::DuplicateMapKey));
     }
 }

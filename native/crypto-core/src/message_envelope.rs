@@ -78,7 +78,10 @@ impl MessageEnvelopeV1 {
             (Value::Int(1), Value::Int(self.protocol_version as i128)),
             (Value::Int(2), Value::Bytes(self.envelope_id.to_vec())),
             (Value::Int(3), Value::Bytes(self.sender_device_id.to_vec())),
-            (Value::Int(4), Value::Bytes(self.recipient_device_id.to_vec())),
+            (
+                Value::Int(4),
+                Value::Bytes(self.recipient_device_id.to_vec()),
+            ),
             (Value::Int(5), Value::Int(self.account_epoch as i128)),
             (Value::Int(6), Value::Bool(self.is_prekey_handshake)),
             (
@@ -186,9 +189,7 @@ fn take_required(slot: &mut Option<Value>) -> Result<Value, MessageEnvelopeError
 
 fn bytes16(value: Value) -> Result<[u8; 16], MessageEnvelopeError> {
     match value {
-        Value::Bytes(bytes) if bytes.len() == 16 => {
-            Ok(bytes.try_into().expect("length checked"))
-        }
+        Value::Bytes(bytes) if bytes.len() == 16 => Ok(bytes.try_into().expect("length checked")),
         _ => Err(MessageEnvelopeError::InvalidField),
     }
 }
@@ -207,9 +208,18 @@ mod tests {
 
     fn envelope() -> MessageEnvelopeV1 {
         MessageEnvelopeV1::new(
-            [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f],
-            [0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f],
-            [0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f],
+            [
+                0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
+                0x0e, 0x0f,
+            ],
+            [
+                0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+                0x1e, 0x1f,
+            ],
+            [
+                0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d,
+                0x2e, 0x2f,
+            ],
             0x0102_0304,
             true,
             vec![0x01, 0xa0],
@@ -325,13 +335,10 @@ mod tests {
         );
 
         let duplicate = vec![
-            0xa9, 0x01, 0x01, 0x02, 0x50,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0x03, 0x50,
-            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-            0x04, 0x50,
-            2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-            0x05, 0x00, 0x06, 0xf4, 0x07, 0x40, 0x08, 0x40, 0x08, 0x40, 0x09, 0x00,
+            0xa9, 0x01, 0x01, 0x02, 0x50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x03,
+            0x50, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0x04, 0x50, 2, 2, 2, 2, 2, 2, 2,
+            2, 2, 2, 2, 2, 2, 2, 2, 2, 0x05, 0x00, 0x06, 0xf4, 0x07, 0x40, 0x08, 0x40, 0x08, 0x40,
+            0x09, 0x00,
         ];
         assert_eq!(
             MessageEnvelopeV1::decode(&duplicate).unwrap_err(),

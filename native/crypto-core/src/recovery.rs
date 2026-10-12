@@ -44,7 +44,12 @@ pub fn bip39_master_seed(mnemonic: &str) -> Result<Zeroizing<[u8; 64]>, Recovery
         return Err(RecoveryError::WrongWordCount);
     }
     let mut seed = Zeroizing::new([0u8; 64]);
-    pbkdf2::pbkdf2_hmac::<Sha512>(normalized.as_bytes(), BIP39_SALT, BIP39_ITERATIONS, &mut seed[..]);
+    pbkdf2::pbkdf2_hmac::<Sha512>(
+        normalized.as_bytes(),
+        BIP39_SALT,
+        BIP39_ITERATIONS,
+        &mut seed[..],
+    );
     Ok(seed)
 }
 
@@ -52,7 +57,8 @@ pub fn bip39_master_seed(mnemonic: &str) -> Result<Zeroizing<[u8; 64]>, Recovery
 pub fn derive_recovery_seed(master_seed: &[u8; 64]) -> Result<Zeroizing<[u8; 32]>, RecoveryError> {
     let hk = Hkdf::<Sha256>::new(Some(RECOVERY_HKDF_SALT), master_seed); // HKDF-Extract
     let mut okm = Zeroizing::new([0u8; 32]);
-    hk.expand(RECOVERY_HKDF_INFO, &mut okm[..]).map_err(|_| RecoveryError::Hkdf)?; // HKDF-Expand
+    hk.expand(RECOVERY_HKDF_INFO, &mut okm[..])
+        .map_err(|_| RecoveryError::Hkdf)?; // HKDF-Expand
     Ok(okm)
 }
 

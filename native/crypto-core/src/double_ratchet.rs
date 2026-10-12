@@ -16,7 +16,10 @@
 
 use std::collections::BTreeMap;
 
-use chacha20poly1305::{aead::{Aead, KeyInit, Payload}, ChaCha20Poly1305, Nonce};
+use chacha20poly1305::{
+    aead::{Aead, KeyInit, Payload},
+    ChaCha20Poly1305, Nonce,
+};
 use hkdf::Hkdf;
 use hmac::{Hmac, Mac};
 use rand_core::OsRng;
@@ -118,10 +121,7 @@ impl PrekeyHandshakeHeader {
 
         let mut pairs = vec![
             (Value::Int(1), Value::Bytes(self.sender_account_id.to_vec())),
-            (
-                Value::Int(2),
-                Value::Int(self.sender_account_epoch as i128),
-            ),
+            (Value::Int(2), Value::Int(self.sender_account_epoch as i128)),
             (Value::Int(3), Value::Bytes(self.sender_dsk_pub.to_vec())),
             (Value::Int(4), Value::Bytes(self.sender_ddhk_pub.to_vec())),
             (Value::Int(5), Value::Bytes(self.sender_cert_dh.to_vec())),
@@ -129,7 +129,10 @@ impl PrekeyHandshakeHeader {
                 Value::Int(6),
                 Value::Int(self.sender_cert_dh_timestamp as i128),
             ),
-            (Value::Int(7), Value::Bytes(self.sender_ephemeral_pub.to_vec())),
+            (
+                Value::Int(7),
+                Value::Bytes(self.sender_ephemeral_pub.to_vec()),
+            ),
             (Value::Int(8), Value::Int(self.recipient_spk_id as i128)),
         ];
         if let Some(id) = self.recipient_opk_id {
@@ -223,9 +226,15 @@ fn bytes_exact<const N: usize>(v: Value) -> Result<[u8; N], RatchetError> {
     }
 }
 
-fn bytes16(v: Value) -> Result<[u8; 16], RatchetError> { bytes_exact(v) }
-fn bytes32(v: Value) -> Result<[u8; 32], RatchetError> { bytes_exact(v) }
-fn bytes64(v: Value) -> Result<[u8; 64], RatchetError> { bytes_exact(v) }
+fn bytes16(v: Value) -> Result<[u8; 16], RatchetError> {
+    bytes_exact(v)
+}
+fn bytes32(v: Value) -> Result<[u8; 32], RatchetError> {
+    bytes_exact(v)
+}
+fn bytes64(v: Value) -> Result<[u8; 64], RatchetError> {
+    bytes_exact(v)
+}
 
 fn u32_value(v: Value) -> Result<u32, RatchetError> {
     match v {
@@ -366,9 +375,8 @@ pub fn aad_msg(
     prekey_flag: bool,
     ratchet_header_bytes: &[u8],
 ) -> Vec<u8> {
-    let mut aad = Vec::with_capacity(
-        MSG_AAD.len() + 1 + 16 + 16 + 16 + 4 + 1 + ratchet_header_bytes.len(),
-    );
+    let mut aad =
+        Vec::with_capacity(MSG_AAD.len() + 1 + 16 + 16 + 16 + 4 + 1 + ratchet_header_bytes.len());
     aad.extend_from_slice(MSG_AAD);
     aad.push(protocol_version);
     aad.extend_from_slice(envelope_id);
@@ -455,11 +463,15 @@ pub fn encrypt_message_0(
         true,
         &header_bytes,
     );
-    let cipher = ChaCha20Poly1305::new_from_slice(k_msg.as_ref()).map_err(|_| RatchetError::AeadEncrypt)?;
+    let cipher =
+        ChaCha20Poly1305::new_from_slice(k_msg.as_ref()).map_err(|_| RatchetError::AeadEncrypt)?;
     let ciphertext = cipher
         .encrypt(
             Nonce::from_slice(&ZERO_MESSAGE_NONCE),
-            Payload { msg: plaintext, aad: &aad },
+            Payload {
+                msg: plaintext,
+                aad: &aad,
+            },
         )
         .map_err(|_| RatchetError::AeadEncrypt)?;
 
@@ -527,11 +539,15 @@ fn ingest_message_0_inner(
         true,
         envelope.ratchet_header_bytes,
     );
-    let cipher = ChaCha20Poly1305::new_from_slice(k_msg.as_ref()).map_err(|_| RatchetError::AeadDecrypt)?;
+    let cipher =
+        ChaCha20Poly1305::new_from_slice(k_msg.as_ref()).map_err(|_| RatchetError::AeadDecrypt)?;
     let plaintext = cipher
         .decrypt(
             Nonce::from_slice(&ZERO_MESSAGE_NONCE),
-            Payload { msg: envelope.ciphertext, aad: &aad },
+            Payload {
+                msg: envelope.ciphertext,
+                aad: &aad,
+            },
         )
         .map_err(|_| RatchetError::AeadAuthFailure)?;
 
@@ -578,10 +594,7 @@ mod tests {
     }
 
     fn hex_encode<T: AsRef<[u8]>>(b: T) -> String {
-        b.as_ref()
-            .iter()
-            .map(|x| format!("{:02x}", x))
-            .collect()
+        b.as_ref().iter().map(|x| format!("{:02x}", x)).collect()
     }
 
     fn arr<const N: usize>(s: &str) -> [u8; N] {
@@ -589,12 +602,19 @@ mod tests {
     }
 
     fn load() -> J {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-vectors/v1/double_ratchet_linear.json");
-        serde_json::from_str(&std::fs::read_to_string(path).expect("vector file")).expect("valid JSON")
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../test-vectors/v1/double_ratchet_linear.json"
+        );
+        serde_json::from_str(&std::fs::read_to_string(path).expect("vector file"))
+            .expect("valid JSON")
     }
 
     fn load_x3dh() -> J {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-vectors/v1/bi_x3dh_handshake.json");
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../test-vectors/v1/bi_x3dh_handshake.json"
+        );
         serde_json::from_str(&std::fs::read_to_string(path).expect("x3dh vector file"))
             .expect("valid JSON")
     }
@@ -640,7 +660,15 @@ mod tests {
 
     #[test]
     fn aad_msg_uses_big_endian_recipient_epoch_and_boolean_flag() {
-        let aad = aad_msg(1, &[0x10; 16], &[0x20; 16], &[0x30; 16], 0x01020304, true, &[0xAB, 0xCD]);
+        let aad = aad_msg(
+            1,
+            &[0x10; 16],
+            &[0x20; 16],
+            &[0x30; 16],
+            0x01020304,
+            true,
+            &[0xAB, 0xCD],
+        );
         assert_eq!(&aad[..13], MSG_AAD);
         assert_eq!(&aad[62..66], &[0x01, 0x02, 0x03, 0x04]);
         assert_eq!(aad[66], 1);
@@ -673,7 +701,10 @@ mod tests {
         let dhs_a0_priv = arr::<32>(v["alice"]["dhs_a0_priv"].as_str().unwrap());
         let mut alice = RatchetState::init_alice(&sk, &spk_b_pub, dhs_a0_priv).unwrap();
         assert_eq!(hex_encode(&alice.rk), v["alice"]["rk_a"]);
-        assert_eq!(hex_encode(alice.ck_s.as_ref().unwrap()), v["alice"]["ck_s_initial"]);
+        assert_eq!(
+            hex_encode(alice.ck_s.as_ref().unwrap()),
+            v["alice"]["ck_s_initial"]
+        );
         assert_eq!(hex_encode(alice.dhs_pub), v["alice"]["dhs_a0_pub"]);
 
         let header = header_from_vector(msg);
@@ -704,10 +735,14 @@ mod tests {
             ratchet_header_bytes: &header_bytes,
             ciphertext: &[],
         };
-        let (_header_bytes, ciphertext) = encrypt_message_0(&mut alice, env, &header, &plaintext).unwrap();
+        let (_header_bytes, ciphertext) =
+            encrypt_message_0(&mut alice, env, &header, &plaintext).unwrap();
         assert_eq!(hex_encode(&ciphertext), msg["ciphertext_with_tag_hex"]);
         assert_eq!(alice.ns, 1);
-        assert_eq!(hex_encode(alice.ck_s.as_ref().unwrap()), v["alice"]["ck_s_after_msg0"]);
+        assert_eq!(
+            hex_encode(alice.ck_s.as_ref().unwrap()),
+            v["alice"]["ck_s_after_msg0"]
+        );
     }
 
     #[test]
@@ -742,16 +777,27 @@ mod tests {
         let plaintext = ingest_message_0_inner(&mut bob, env, 7, Some(42), dhs_b1_priv).unwrap();
         assert_eq!(plaintext, b"hello pm");
         assert_eq!(hex_encode(&bob.rk), v["bob"]["rk_b_final"]);
-        assert_eq!(hex_encode(bob.ck_r.as_ref().unwrap()), v["bob"]["ck_r_after"]);
-        assert_eq!(hex_encode(bob.ck_s.as_ref().unwrap()), v["bob"]["ck_s_final"]);
+        assert_eq!(
+            hex_encode(bob.ck_r.as_ref().unwrap()),
+            v["bob"]["ck_r_after"]
+        );
+        assert_eq!(
+            hex_encode(bob.ck_s.as_ref().unwrap()),
+            v["bob"]["ck_s_final"]
+        );
         assert_eq!(hex_encode(bob.dhs_pub), v["bob"]["dhs_b1_pub"]);
-        assert_eq!(hex_encode(bob.dhr_pub.unwrap()), v["message_0"]["prekey_handshake_header"]["fields"]["10_initial_ratchet_pub"]);
+        assert_eq!(
+            hex_encode(bob.dhr_pub.unwrap()),
+            v["message_0"]["prekey_handshake_header"]["fields"]["10_initial_ratchet_pub"]
+        );
         assert_eq!(bob.ns, 0);
         assert_eq!(bob.nr, 1);
         assert_eq!(bob.pn, 0);
     }
 
-    fn state_snapshot(state: &RatchetState) -> (
+    fn state_snapshot(
+        state: &RatchetState,
+    ) -> (
         RatchetKey,
         RatchetKey,
         [u8; 32],
@@ -780,7 +826,8 @@ mod tests {
         let v = load();
         let sk = arr::<32>(v["sk"].as_str().unwrap());
         let alice = &v["alice"];
-        let spk_b_pub = arr::<32>("ec8c415e81fc6095efe84f8c418d7387acea1cd8faad6f48dc2d7f486c9ecb57");
+        let spk_b_pub =
+            arr::<32>("ec8c415e81fc6095efe84f8c418d7387acea1cd8faad6f48dc2d7f486c9ecb57");
         let mut state = RatchetState::init_alice(
             &sk,
             &spk_b_pub,
@@ -790,9 +837,9 @@ mod tests {
 
         // Frozen post-Message-0 Alice state. KDF_CK does not change RK.
         state.rk = Zeroizing::new(arr::<32>(alice["rk_a"].as_str().unwrap()));
-        state.ck_s = Some(Zeroizing::new(
-            arr::<32>(alice["ck_s_after_msg0"].as_str().unwrap()),
-        ));
+        state.ck_s = Some(Zeroizing::new(arr::<32>(
+            alice["ck_s_after_msg0"].as_str().unwrap(),
+        )));
         state.ns = alice["ns_after"].as_u64().unwrap() as u32;
 
         let bob_dhs_b1_pub = arr::<32>(v["bob"]["dhs_b1_pub"].as_str().unwrap());
@@ -800,15 +847,11 @@ mod tests {
 
         assert_eq!(
             hex_encode(&state.rk),
-            v["alice_after_bob_reply"]["rk_a_next"]
-                .as_str()
-                .unwrap()
+            v["alice_after_bob_reply"]["rk_a_next"].as_str().unwrap()
         );
         assert_eq!(
             hex_encode(state.ck_r.as_ref().unwrap()),
-            v["alice_after_bob_reply"]["ck_r"]
-                .as_str()
-                .unwrap()
+            v["alice_after_bob_reply"]["ck_r"].as_str().unwrap()
         );
         assert_eq!(state.dhr_pub, Some(bob_dhs_b1_pub));
         assert_eq!(state.pn, 1);
@@ -852,7 +895,10 @@ mod tests {
         );
         assert_eq!(state_snapshot(&state), before);
 
-        let mut state2 = RatchetState::init_bob(&sk, arr::<32>(case["inputs"]["spk_b_priv"].as_str().unwrap()));
+        let mut state2 = RatchetState::init_bob(
+            &sk,
+            arr::<32>(case["inputs"]["spk_b_priv"].as_str().unwrap()),
+        );
         let before2 = state_snapshot(&state2);
         let mut bad_env_id = env_id;
         bad_env_id[0] ^= 1;
@@ -879,20 +925,41 @@ mod tests {
         let v = message_vector();
         let header = header_from_vector(&v);
         let mut pairs = vec![
-            (Value::Int(1), Value::Bytes(header.sender_account_id.to_vec())),
-            (Value::Int(2), Value::Int(header.sender_account_epoch as i128)),
+            (
+                Value::Int(1),
+                Value::Bytes(header.sender_account_id.to_vec()),
+            ),
+            (
+                Value::Int(2),
+                Value::Int(header.sender_account_epoch as i128),
+            ),
             (Value::Int(3), Value::Bytes(header.sender_dsk_pub.to_vec())),
             (Value::Int(4), Value::Bytes(header.sender_ddhk_pub.to_vec())),
             (Value::Int(5), Value::Bytes(header.sender_cert_dh.to_vec())),
-            (Value::Int(6), Value::Int(header.sender_cert_dh_timestamp as i128)),
-            (Value::Int(7), Value::Bytes(header.sender_ephemeral_pub.to_vec())),
+            (
+                Value::Int(6),
+                Value::Int(header.sender_cert_dh_timestamp as i128),
+            ),
+            (
+                Value::Int(7),
+                Value::Bytes(header.sender_ephemeral_pub.to_vec()),
+            ),
             (Value::Int(8), Value::Int(header.recipient_spk_id as i128)),
-            (Value::Int(9), Value::Int(header.recipient_opk_id.unwrap() as i128)),
-            (Value::Int(10), Value::Bytes(header.initial_ratchet_pub.to_vec())),
+            (
+                Value::Int(9),
+                Value::Int(header.recipient_opk_id.unwrap() as i128),
+            ),
+            (
+                Value::Int(10),
+                Value::Bytes(header.initial_ratchet_pub.to_vec()),
+            ),
             (Value::Int(11), Value::Int(0)),
             (Value::Int(12), Value::Int(0)),
         ];
         let bytes = cbor::encode_canonical(&Value::Map(std::mem::take(&mut pairs))).unwrap();
-        assert_eq!(PrekeyHandshakeHeader::decode(&bytes).unwrap_err(), RatchetError::UnknownHeaderField);
+        assert_eq!(
+            PrekeyHandshakeHeader::decode(&bytes).unwrap_err(),
+            RatchetError::UnknownHeaderField
+        );
     }
 }

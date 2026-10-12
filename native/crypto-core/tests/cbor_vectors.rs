@@ -6,7 +6,9 @@ use std::collections::BTreeMap;
 
 fn hex_decode(s: &str) -> Vec<u8> {
     assert!(s.len() % 2 == 0, "odd hex length");
-    (0..s.len() / 2).map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap()).collect()
+    (0..s.len() / 2)
+        .map(|i| u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap())
+        .collect()
 }
 fn hex_encode(b: &[u8]) -> String {
     b.iter().map(|x| format!("{:02x}", x)).collect()
@@ -39,7 +41,10 @@ fn parse_tagged(j: &J) -> Value {
 }
 
 fn load() -> J {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-vectors/v1/cbor_canonical_codec.json");
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../test-vectors/v1/cbor_canonical_codec.json"
+    );
     serde_json::from_str(&std::fs::read_to_string(path).expect("vector file")).expect("valid JSON")
 }
 
@@ -75,8 +80,10 @@ fn cbor_shared_vectors() {
     // Resolved s28 entry (array name "quarantined" kept for loader compatibility): the handoff's bytes are malformed; the authoritative RFC bytes are valid.
     for q in v["quarantined"].as_array().unwrap() {
         let as_written = hex_decode(q["spec_s28_corrected_hex_as_written"].as_str().unwrap());
-        assert_eq!(decode_strict(&as_written).unwrap_err().category(),
-                   q["spec_s28_as_written_decodes_to"].as_str().unwrap());
+        assert_eq!(
+            decode_strict(&as_written).unwrap_err().category(),
+            q["spec_s28_as_written_decodes_to"].as_str().unwrap()
+        );
         let rfc = hex_decode(q["rfc8949_hex"].as_str().unwrap());
         assert_eq!(encode_canonical(&parse_tagged(&q["value"])).unwrap(), rfc);
     }

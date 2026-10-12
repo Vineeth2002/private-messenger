@@ -104,7 +104,9 @@ fn send_message(
     (header, header_bytes, ciphertext)
 }
 
-fn snapshot(state: &RatchetState) -> (
+fn snapshot(
+    state: &RatchetState,
+) -> (
     RatchetKey,
     RatchetKey,
     [u8; 32],
@@ -150,18 +152,30 @@ fn same_chain_out_of_order_messages_use_one_time_skipped_keys() {
     let third = send_message(&mut bob, &ids[2], &bob_device, &alice_device, b"message-2");
 
     assert_eq!(
-        decrypt_message(&mut alice, env(&ids[2], &bob_device, &alice_device, 1, &third.1, &third.2)).unwrap(),
+        decrypt_message(
+            &mut alice,
+            env(&ids[2], &bob_device, &alice_device, 1, &third.1, &third.2)
+        )
+        .unwrap(),
         b"message-2"
     );
     assert_eq!(alice.nr, 3);
     assert_eq!(alice.skipped_keys.len(), 2);
     assert_eq!(
-        decrypt_message(&mut alice, env(&ids[0], &bob_device, &alice_device, 1, &first.1, &first.2)).unwrap(),
+        decrypt_message(
+            &mut alice,
+            env(&ids[0], &bob_device, &alice_device, 1, &first.1, &first.2)
+        )
+        .unwrap(),
         b"message-0"
     );
     assert_eq!(alice.skipped_keys.len(), 1);
     assert_eq!(
-        decrypt_message(&mut alice, env(&ids[1], &bob_device, &alice_device, 1, &second.1, &second.2)).unwrap(),
+        decrypt_message(
+            &mut alice,
+            env(&ids[1], &bob_device, &alice_device, 1, &second.1, &second.2)
+        )
+        .unwrap(),
         b"message-1"
     );
     assert!(alice.skipped_keys.is_empty());
@@ -206,20 +220,36 @@ fn new_ratchet_retains_old_and_new_chain_skipped_keys() {
     let new1 = send_message(&mut bob, &new1_id, &bob_device, &alice_device, b"new-1");
 
     assert_eq!(
-        decrypt_message(&mut alice, env(&new1_id, &bob_device, &alice_device, 1, &new1.1, &new1.2)).unwrap(),
+        decrypt_message(
+            &mut alice,
+            env(&new1_id, &bob_device, &alice_device, 1, &new1.1, &new1.2)
+        )
+        .unwrap(),
         b"new-1"
     );
     assert_eq!(alice.skipped_keys.len(), 3);
     assert_eq!(
-        decrypt_message(&mut alice, env(&old0_id, &bob_device, &alice_device, 1, &old0.1, &old0.2)).unwrap(),
+        decrypt_message(
+            &mut alice,
+            env(&old0_id, &bob_device, &alice_device, 1, &old0.1, &old0.2)
+        )
+        .unwrap(),
         b"old-0"
     );
     assert_eq!(
-        decrypt_message(&mut alice, env(&old1_id, &bob_device, &alice_device, 1, &old1.1, &old1.2)).unwrap(),
+        decrypt_message(
+            &mut alice,
+            env(&old1_id, &bob_device, &alice_device, 1, &old1.1, &old1.2)
+        )
+        .unwrap(),
         b"old-1"
     );
     assert_eq!(
-        decrypt_message(&mut alice, env(&new0_id, &bob_device, &alice_device, 1, &new0.1, &new0.2)).unwrap(),
+        decrypt_message(
+            &mut alice,
+            env(&new0_id, &bob_device, &alice_device, 1, &new0.1, &new0.2)
+        )
+        .unwrap(),
         b"new-0"
     );
     assert!(alice.skipped_keys.is_empty());
@@ -259,7 +289,14 @@ fn new_ratchet_auth_failure_does_not_commit_skipped_keys_or_ratchet_state() {
     let before = snapshot(&alice);
     let err = decrypt_new_ratchet_message_inner(
         &mut alice,
-        env(&new_id, &bob_device, &alice_device, 1, &new_message.1, &bad_ciphertext),
+        env(
+            &new_id,
+            &bob_device,
+            &alice_device,
+            1,
+            &new_message.1,
+            &bad_ciphertext,
+        ),
         test_key("alice-dhs-next"),
     )
     .unwrap_err();

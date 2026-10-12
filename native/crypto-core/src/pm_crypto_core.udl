@@ -9,6 +9,7 @@ enum CryptoError {
     "MalformedCbor",
     "UnsupportedItem",
     "LimitExceeded",
+    "InvalidField",
     "EntropyFailure",
 };
 
@@ -17,6 +18,20 @@ interface AccountContext {
     bytes device_id();
     bytes dsk_public_key();
     bytes ddhk_public_key();
+
+    [Throws=CryptoError]
+    bytes sign_transparency_leaf(u64 epoch, bytes cert_dh, bytes spk_pub, bytes push_pk);
+};
+
+interface RecoveryContext {
+    bytes recovery_public_key();
+    bytes recovery_commitment();
+
+    [Throws=CryptoError]
+    bytes sign_device_enrollment(bytes account_id, u64 epoch, bytes device_id, bytes dsk_pub, bytes ddhk_pub);
+
+    [Throws=CryptoError]
+    bytes sign_epoch_transition(bytes account_id, u64 old_epoch, u64 new_epoch, u64 action, bytes device_id);
 };
 
 namespace pm_crypto_core {
@@ -25,4 +40,7 @@ namespace pm_crypto_core {
 
     [Throws=CryptoError]
     AccountContext identity_initialize();
+
+    [Throws=CryptoError]
+    RecoveryContext recovery_initialize(string mnemonic);
 };

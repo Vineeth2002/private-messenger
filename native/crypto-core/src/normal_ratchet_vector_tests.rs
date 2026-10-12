@@ -148,9 +148,9 @@ fn alice_post_message_zero() -> RatchetState {
 
     let mut alice = RatchetState::init_alice(&sk, &spk_pub, a0_priv).unwrap();
     alice.rk = Zeroizing::new(arr::<32>(v["alice"]["rk_a"].as_str().unwrap()));
-    alice.ck_s = Some(Zeroizing::new(
-        arr::<32>(v["alice"]["ck_s_after_msg0"].as_str().unwrap()),
-    ));
+    alice.ck_s = Some(Zeroizing::new(arr::<32>(
+        v["alice"]["ck_s_after_msg0"].as_str().unwrap(),
+    )));
     alice.ns = v["alice"]["ns_after"].as_u64().unwrap() as u32;
     alice
 }
@@ -269,13 +269,12 @@ fn normal_vector_bidirectional_ratchet_path_matches() {
     // Bob -> Alice, new ratchet.
     let bob_reply_header = vector_header(bob_reply);
     let bob_reply_header_bytes = bob_reply_header.encode().unwrap();
-    let bob_reply_id = arr::<16>(
-        bob_reply["envelope"]["envelope_id"]
+    let bob_reply_id = arr::<16>(bob_reply["envelope"]["envelope_id"].as_str().unwrap());
+    let bob_reply_ct = hex_decode(
+        bob_reply["derived"]["ciphertext_with_tag_hex"]
             .as_str()
             .unwrap(),
     );
-    let bob_reply_ct =
-        hex_decode(bob_reply["derived"]["ciphertext_with_tag_hex"].as_str().unwrap());
 
     let (_, encrypted) = encrypt_message(
         &mut bob,
@@ -283,9 +282,7 @@ fn normal_vector_bidirectional_ratchet_path_matches() {
             &bob_reply_id,
             &bob_device,
             &alice_device,
-            bob_reply["envelope"]["account_epoch"]
-                .as_u64()
-                .unwrap() as u32,
+            bob_reply["envelope"]["account_epoch"].as_u64().unwrap() as u32,
             &bob_reply_header_bytes,
             &[],
         ),
@@ -294,18 +291,20 @@ fn normal_vector_bidirectional_ratchet_path_matches() {
     )
     .unwrap();
     assert_eq!(encrypted, bob_reply_ct);
-    assert_eq!(hex_encode(bob.ck_s.as_ref().unwrap()), bob_reply["derived"]["ck_sender_after_hex"]);
+    assert_eq!(
+        hex_encode(bob.ck_s.as_ref().unwrap()),
+        bob_reply["derived"]["ck_sender_after_hex"]
+    );
 
     // Bob's second message is same-ratchet N=1.
     let bob_follow_header = vector_header(bob_follow);
     let bob_follow_header_bytes = bob_follow_header.encode().unwrap();
-    let bob_follow_id = arr::<16>(
-        bob_follow["envelope"]["envelope_id"]
+    let bob_follow_id = arr::<16>(bob_follow["envelope"]["envelope_id"].as_str().unwrap());
+    let bob_follow_ct = hex_decode(
+        bob_follow["derived"]["ciphertext_with_tag_hex"]
             .as_str()
             .unwrap(),
     );
-    let bob_follow_ct =
-        hex_decode(bob_follow["derived"]["ciphertext_with_tag_hex"].as_str().unwrap());
     let (_, encrypted_follow) = encrypt_message(
         &mut bob,
         normal_env_from_parts(
@@ -350,11 +349,17 @@ fn normal_vector_bidirectional_ratchet_path_matches() {
             .as_str()
             .unwrap()
     );
-    assert_eq!(hex_encode(alice.dhs_pub), bob_reply["receiver_transition"]["new_local_dhs_pub_hex"]);
+    assert_eq!(
+        hex_encode(alice.dhs_pub),
+        bob_reply["receiver_transition"]["new_local_dhs_pub_hex"]
+    );
     assert_eq!(alice.pn, 1);
     assert_eq!(alice.ns, 0);
     assert_eq!(alice.nr, 1);
-    assert_eq!(plaintext, hex_decode(bob_reply["plaintext_hex"].as_str().unwrap()));
+    assert_eq!(
+        plaintext,
+        hex_decode(bob_reply["plaintext_hex"].as_str().unwrap())
+    );
 
     // Same-ratchet follow-up.
     let plaintext_follow = decrypt_message(
@@ -378,13 +383,12 @@ fn normal_vector_bidirectional_ratchet_path_matches() {
     // Alice -> Bob, new ratchet.
     let alice_reply_header = vector_header(alice_reply);
     let alice_reply_header_bytes = alice_reply_header.encode().unwrap();
-    let alice_reply_id = arr::<16>(
-        alice_reply["envelope"]["envelope_id"]
+    let alice_reply_id = arr::<16>(alice_reply["envelope"]["envelope_id"].as_str().unwrap());
+    let alice_reply_ct = hex_decode(
+        alice_reply["derived"]["ciphertext_with_tag_hex"]
             .as_str()
             .unwrap(),
     );
-    let alice_reply_ct =
-        hex_decode(alice_reply["derived"]["ciphertext_with_tag_hex"].as_str().unwrap());
 
     let (_, encrypted_reply) = encrypt_message(
         &mut alice,
@@ -457,15 +461,25 @@ fn normal_vector_negative_cases_are_enforced_atomically() {
     let header = vector_header(bob_reply);
     let header_bytes = header.encode().unwrap();
     let id = arr::<16>(bob_reply["envelope"]["envelope_id"].as_str().unwrap());
-    let mut ciphertext =
-        hex_decode(bob_reply["derived"]["ciphertext_with_tag_hex"].as_str().unwrap());
+    let mut ciphertext = hex_decode(
+        bob_reply["derived"]["ciphertext_with_tag_hex"]
+            .as_str()
+            .unwrap(),
+    );
     *ciphertext.last_mut().unwrap() ^= 1;
 
     let mut alice = alice_post_message_zero();
     let before = state_snapshot(&alice);
     let err = decrypt_new_ratchet_message_inner(
         &mut alice,
-        normal_env_from_parts(&id, &bob_device, &alice_device, 1, &header_bytes, &ciphertext),
+        normal_env_from_parts(
+            &id,
+            &bob_device,
+            &alice_device,
+            1,
+            &header_bytes,
+            &ciphertext,
+        ),
         test_key("dhs_a1"),
     )
     .unwrap_err();
@@ -479,8 +493,11 @@ fn normal_vector_negative_cases_are_enforced_atomically() {
     bad_header.sequence_number = 2;
     let bad_header_bytes = bad_header.encode().unwrap();
     let follow_id = arr::<16>(bob_follow["envelope"]["envelope_id"].as_str().unwrap());
-    let follow_ct =
-        hex_decode(bob_follow["derived"]["ciphertext_with_tag_hex"].as_str().unwrap());
+    let follow_ct = hex_decode(
+        bob_follow["derived"]["ciphertext_with_tag_hex"]
+            .as_str()
+            .unwrap(),
+    );
 
     // Advance to Nr=0 for the current Bob->Alice sending ratchet by putting
     // Alice on the corresponding post-new-ratchet receiving state first.
@@ -493,7 +510,11 @@ fn normal_vector_negative_cases_are_enforced_atomically() {
             &alice_device,
             1,
             &header_bytes,
-            &hex_decode(bob_reply["derived"]["ciphertext_with_tag_hex"].as_str().unwrap()),
+            &hex_decode(
+                bob_reply["derived"]["ciphertext_with_tag_hex"]
+                    .as_str()
+                    .unwrap(),
+            ),
         ),
         test_key("dhs_a1"),
     )
@@ -516,7 +537,6 @@ fn normal_vector_negative_cases_are_enforced_atomically() {
     .unwrap_err();
     assert_eq!(err, RatchetError::AeadAuthFailure);
     assert_eq!(state_snapshot(&alice_state), before_alice);
-
 }
 
 fn normal_env_from_parts<'a>(
