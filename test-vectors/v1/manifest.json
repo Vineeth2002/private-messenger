@@ -2,6 +2,11 @@
   "manifest_format": 1,
   "files": [
     {
+      "path": "authorization_v1.json",
+      "status": "ACTIVE",
+      "sha256": "31e5793c39ce099c1d96eaa39d827d8b8204ee1aec080624c8865fd4a0f1a732"
+    },
+    {
       "path": "bi_x3dh_handshake.json",
       "status": "ACTIVE",
       "sha256": "bbf8653936cb0ae8b52baa965521749b684a75f8c0697328c62905bf93cf4aed"
@@ -75,11 +80,6 @@
       "path": "transparency_smt_proofs.json",
       "status": "ACTIVE",
       "sha256": "7c40dd85d814ec3ec149f5e39b16b472db34f7f8f4e72352c4dbc9c70bb34062"
-    },
-    {
-  "path": "authorization_v1.json",
-  "status": "ACTIVE",
-  "sha256": "31e5793c39ce099c1d96eaa39d827d8b8204ee1aec080624c8865fd4a0f1a732"
-  }
+    }
   ]
 }
