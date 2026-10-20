@@ -822,6 +822,32 @@ mod tests {
     }
 
     #[test]
+    fn receive_first_dh_ratchet_rejects_non_contributory_dh_without_mutating_state() {
+        let v = load();
+        let sk = arr::<32>(v["sk"].as_str().unwrap());
+        let alice = &v["alice"];
+
+        let spk_b_pub =
+            arr::<32>("ec8c415e81fc6095efe84f8c418d7387acea1cd8faad6f48dc2d7f486c9ecb57");
+
+        let mut state = RatchetState::init_alice(
+            &sk,
+            &spk_b_pub,
+            arr::<32>(alice["dhs_a0_priv"].as_str().unwrap()),
+        )
+        .unwrap();
+
+        let before = state_snapshot(&state);
+
+        assert_eq!(
+            receive_first_dh_ratchet(&mut state, [0u8; 32]).unwrap_err(),
+            RatchetError::NonContributoryDh
+        );
+
+        assert_eq!(state_snapshot(&state), before);
+    }
+
+    #[test]
     fn alice_first_receive_dh_ratchet_matches_frozen_bob_reply_state() {
         let v = load();
         let sk = arr::<32>(v["sk"].as_str().unwrap());
