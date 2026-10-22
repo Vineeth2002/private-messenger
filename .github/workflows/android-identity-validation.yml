@@ -52,12 +52,13 @@ jobs:
         run: cargo install cargo-ndk --version 3.5.4 --locked
 
       - name: Build native libraries from committed Rust source
+        working-directory: native/crypto-core
         run: |
           cargo ndk -t arm64-v8a -t x86_64 \
-            -o apps/android/app/src/main/jniLibs \
-            build --release --locked --manifest-path native/crypto-core/Cargo.toml
-          test -s apps/android/app/src/main/jniLibs/arm64-v8a/libpm_crypto_core.so
-          test -s apps/android/app/src/main/jniLibs/x86_64/libpm_crypto_core.so
+            -o ../../apps/android/app/src/main/jniLibs \
+            build --release --locked
+          test -s ../../apps/android/app/src/main/jniLibs/arm64-v8a/libpm_crypto_core.so
+          test -s ../../apps/android/app/src/main/jniLibs/x86_64/libpm_crypto_core.so
 
       - name: Run Android unit tests and assemble debug APK
         working-directory: apps/android
