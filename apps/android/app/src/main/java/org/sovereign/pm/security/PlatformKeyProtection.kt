@@ -47,14 +47,16 @@ interface PlatformKek {
 }
 
 /** Android Keystore implementation for the local-storage DEK only. */
-class AndroidKeystorePlatformKek(
+class AndroidKeystorePlatformKek internal constructor(
     private val context: Context,
+    // Internal injection permits integration tests to isolate their key from production data.
+    private val keyAlias: String = KEY_ALIAS,
 ) : PlatformKek {
 
     private val lock = Any()
 
     override fun hasExistingKey(): Boolean = synchronized(lock) {
-        loadKeyStore().containsAlias(KEY_ALIAS)
+        loadKeyStore().containsAlias(keyAlias)
     }
 
     override fun discover(): KekCapabilities = synchronized(lock) {
@@ -165,7 +167,7 @@ class AndroidKeystorePlatformKek(
 
     private fun generateKey(preferStrongBox: Boolean): SecretKey {
         val builder = KeyGenParameterSpec.Builder(
-            KEY_ALIAS,
+            keyAlias,
             KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
         )
             .setKeySize(256)
@@ -187,9 +189,9 @@ class AndroidKeystorePlatformKek(
 
     private fun getExistingKey(): SecretKey? {
         val keyStore = loadKeyStore()
-        if (!keyStore.containsAlias(KEY_ALIAS)) return null
+        if (!keyStore.containsAlias(keyAlias)) return null
 
-        return keyStore.getKey(KEY_ALIAS, null) as? SecretKey
+        return keyStore.getKey(keyAlias, null) as? SecretKey
             ?: throw IllegalStateException("Storage protection key is invalid.")
     }
 

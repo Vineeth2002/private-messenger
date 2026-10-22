@@ -26,9 +26,10 @@ internal class IdentityStore(
     context: Context,
     private val bridge: CryptoBridge,
     private val platformKek: PlatformKek,
+    fileName: String = FILE_NAME,
 ) {
     private val lock = Any()
-    private val atomicFile = AtomicFile(File(context.noBackupFilesDir, FILE_NAME))
+    private val atomicFile = AtomicFile(File(context.noBackupFilesDir, fileName))
 
     fun loadOrCreate(): IdentityLoadResult = synchronized(lock) {
         if (hasAnyStorageArtifact()) restoreExisting() else createAndPersist()
