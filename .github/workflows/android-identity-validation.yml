@@ -27,6 +27,11 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
+      - name: Install Android Emulator host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libpulse0
+
       - name: Install pinned Android SDK, NDK and emulator image
         run: |
           sdkmanager \

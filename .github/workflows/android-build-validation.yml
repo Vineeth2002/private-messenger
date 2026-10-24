@@ -40,6 +40,11 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
+      - name: Install Android Emulator host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libpulse0
+
       - name: Install the pinned Android SDK packages
         shell: bash
         run: |
@@ -68,7 +73,7 @@ jobs:
 
           # Guard every later cleanup operation against an invalid SDK path.
           if [[ "$SDK_ROOT" == "/" ||
-              ! -d "$SDK_ROOT/cmdline-tools" ]]; then
+                ! -d "$SDK_ROOT/cmdline-tools" ]]; then
             echo "::error::Android SDK root is invalid: $SDK_ROOT"
             exit 1
           fi
