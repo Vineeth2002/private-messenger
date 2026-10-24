@@ -6,6 +6,8 @@
 //! Not yet started: HPKE push and transparency.
 #![allow(unsafe_code)]
 
+use crate::ffi::identity_restore;
+
 #[deny(unsafe_code)]
 pub mod authorization_v1;
 #[deny(unsafe_code)]

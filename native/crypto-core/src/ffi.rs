@@ -2,6 +2,10 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::cbor::CborError;
+use chacha20poly1305::{
+    aead::{Aead, KeyInit, Payload},
+    ChaCha20Poly1305, Nonce,
+};
 use ed25519_dalek::SigningKey;
 use rand_core::{OsRng, RngCore};
 use thiserror::Error;
@@ -190,6 +194,120 @@ impl AccountContext {
     }
 }
 
+// Local at-rest format; this is not a protocol/network encoding. The storage
+// key is supplied to these Rust-only helpers and is never part of a
+// stored record. Only the narrowly scoped Storage DEK API crosses UniFFI;
+// private protocol key material remains native-only.
+const IDENTITY_STORE_HEADER: &[u8; 9] = b"PMIDSTOR\x01";
+const IDENTITY_STORE_NONCE_LEN: usize = 12;
+const IDENTITY_STORE_PLAINTEXT_LEN: usize = 96; // account ID + device ID + two 32-byte seeds
+const IDENTITY_STORE_TAG_LEN: usize = 16;
+const IDENTITY_STORE_PREFIX_LEN: usize = IDENTITY_STORE_HEADER.len() + IDENTITY_STORE_NONCE_LEN;
+const IDENTITY_STORE_RECORD_LEN: usize =
+    IDENTITY_STORE_PREFIX_LEN + IDENTITY_STORE_PLAINTEXT_LEN + IDENTITY_STORE_TAG_LEN;
+
+impl AccountContext {
+    /// Produce an authenticated, versioned at-rest record without returning
+    /// the plaintext identity or its private seeds to the caller.
+    fn seal_for_storage_key(&self, storage_key: &[u8; 32]) -> Result<Vec<u8>, CryptoError> {
+        let mut plaintext = Zeroizing::new([0u8; IDENTITY_STORE_PLAINTEXT_LEN]);
+        plaintext[0..16].copy_from_slice(&self.account_id);
+        plaintext[16..32].copy_from_slice(&self.device_id);
+        plaintext[32..64].copy_from_slice(&self.dsk_seed[..]);
+        plaintext[64..96].copy_from_slice(&self.ddhk_seed[..]);
+
+        let cipher = ChaCha20Poly1305::new_from_slice(storage_key)
+            .map_err(|_| CryptoError::InvalidField)?;
+        let mut rng = OsRng;
+        let mut nonce = [0u8; IDENTITY_STORE_NONCE_LEN];
+        rng.try_fill_bytes(&mut nonce)
+            .map_err(|_| CryptoError::EntropyFailure)?;
+
+        let ciphertext = cipher
+            .encrypt(
+                Nonce::from_slice(&nonce),
+                Payload {
+                    msg: &plaintext[..],
+                    aad: IDENTITY_STORE_HEADER.as_slice(),
+                },
+            )
+            .map_err(|_| CryptoError::InvalidField)?;
+
+        let mut record = Vec::with_capacity(IDENTITY_STORE_RECORD_LEN);
+        record.extend_from_slice(IDENTITY_STORE_HEADER);
+        record.extend_from_slice(&nonce);
+        record.extend_from_slice(&ciphertext);
+        if record.len() != IDENTITY_STORE_RECORD_LEN {
+            return Err(CryptoError::InvalidField);
+        }
+        Ok(record)
+    }
+
+    /// UniFFI boundary for the local-storage DEK; protocol private keys remain native-only.
+    pub fn seal_for_storage(&self, storage_key: Vec<u8>) -> Result<Vec<u8>, CryptoError> {
+        let storage_key = Zeroizing::new(storage_key);
+        let fixed_key = Zeroizing::new(fixed::<32>(&storage_key)?);
+        self.seal_for_storage_key(&fixed_key)
+    }
+
+    /// Restore only a structurally valid and authenticated identity record.
+    /// Authentication, wrong-key, and malformed-record failures are returned
+    /// as the same generic error; callers must never create a replacement
+    /// identity automatically after a restore failure.
+    pub fn restore_from_storage(
+        record: &[u8],
+        storage_key: &[u8; 32],
+    ) -> Result<Arc<Self>, CryptoError> {
+        if record.len() != IDENTITY_STORE_RECORD_LEN
+            || record.get(..IDENTITY_STORE_HEADER.len())
+                != Some(IDENTITY_STORE_HEADER.as_slice())
+        {
+            return Err(CryptoError::InvalidField);
+        }
+
+        let cipher = ChaCha20Poly1305::new_from_slice(storage_key)
+            .map_err(|_| CryptoError::InvalidField)?;
+        let nonce = Nonce::from_slice(
+            &record[IDENTITY_STORE_HEADER.len()..IDENTITY_STORE_PREFIX_LEN],
+        );
+        let plaintext = cipher
+            .decrypt(
+                nonce,
+                Payload {
+                    msg: &record[IDENTITY_STORE_PREFIX_LEN..],
+                    aad: IDENTITY_STORE_HEADER.as_slice(),
+                },
+            )
+            .map_err(|_| CryptoError::InvalidField)?;
+        let plaintext = Zeroizing::new(plaintext);
+        if plaintext.len() != IDENTITY_STORE_PLAINTEXT_LEN {
+            return Err(CryptoError::InvalidField);
+        }
+
+        let account_id = fixed::<16>(&plaintext[0..16])?;
+        let device_id = fixed::<16>(&plaintext[16..32])?;
+        // Both IDs are generated as UUIDv7. Reject records that violate that
+        // invariant, even if their AEAD tag is valid.
+        for id in [&account_id, &device_id] {
+            if id[6] >> 4 != 0x7 || id[8] >> 6 != 0b10 {
+                return Err(CryptoError::InvalidField);
+            }
+        }
+
+        let mut dsk_seed = Zeroizing::new([0u8; 32]);
+        dsk_seed.copy_from_slice(&plaintext[32..64]);
+        let mut ddhk_seed = Zeroizing::new([0u8; 32]);
+        ddhk_seed.copy_from_slice(&plaintext[64..96]);
+
+        Ok(Arc::new(Self {
+            account_id,
+            device_id,
+            dsk_seed,
+            ddhk_seed,
+        }))
+    }
+}
+
 fn uuid_v7(rng: &mut OsRng) -> Result<[u8; 16], CryptoError> {
     let timestamp_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -249,6 +367,16 @@ pub fn identity_initialize() -> Result<Arc<AccountContext>, CryptoError> {
         dsk_seed,
         ddhk_seed,
     }))
+}
+
+/// Restore an identity from an authenticated local-storage record; the transient Storage DEK is zeroized.
+pub fn identity_restore(
+    record: Vec<u8>,
+    storage_key: Vec<u8>,
+) -> Result<Arc<AccountContext>, CryptoError> {
+    let storage_key = Zeroizing::new(storage_key);
+    let fixed_key = Zeroizing::new(fixed::<32>(&storage_key)?);
+    AccountContext::restore_from_storage(&record, &fixed_key)
 }
 
 /// UniFFI-safe validation boundary retained as a regression API.
@@ -311,6 +439,87 @@ mod tests {
         assert_eq!(
             handle.ddhk_public_key(),
             PublicKey::from(&ddhk).to_bytes().to_vec()
+        );
+    }
+
+    #[test]
+    fn identity_storage_roundtrip_preserves_ids_keys_and_signing() {
+        let original = identity_initialize().unwrap();
+        let storage_key = [0xA5; 32];
+        let record = original.seal_for_storage_key(&storage_key).unwrap();
+
+        assert_eq!(record.len(), IDENTITY_STORE_RECORD_LEN);
+        assert_eq!(
+            &record[..IDENTITY_STORE_HEADER.len()],
+            IDENTITY_STORE_HEADER.as_slice()
+        );
+        assert!(!record.windows(32).any(|window| window == &original.dsk_seed[..]));
+        assert!(!record.windows(32).any(|window| window == &original.ddhk_seed[..]));
+
+        let restored = AccountContext::restore_from_storage(&record, &storage_key).unwrap();
+        assert_eq!(restored.account_id(), original.account_id());
+        assert_eq!(restored.device_id(), original.device_id());
+        assert_eq!(restored.dsk_public_key(), original.dsk_public_key());
+        assert_eq!(restored.ddhk_public_key(), original.ddhk_public_key());
+
+        let cert = vec![0x11; 64];
+        let spk = vec![0x22; 32];
+        let push = vec![0x33; 32];
+        assert_eq!(
+            restored
+                .sign_transparency_leaf(1, cert.clone(), spk.clone(), push.clone())
+                .unwrap(),
+            original
+                .sign_transparency_leaf(1, cert, spk, push)
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn identity_storage_rejects_wrong_key_and_tampering() {
+        let original = identity_initialize().unwrap();
+        let storage_key = [0xA5; 32];
+        let record = original.seal_for_storage_key(&storage_key).unwrap();
+
+        assert_eq!(
+            AccountContext::restore_from_storage(&record, &[0x5A; 32]).err(),
+            Some(CryptoError::InvalidField)
+        );
+
+        for offset in [
+            0,
+            IDENTITY_STORE_HEADER.len() - 1,
+            IDENTITY_STORE_HEADER.len(),
+            IDENTITY_STORE_RECORD_LEN - 1,
+        ] {
+            let mut tampered = record.clone();
+            tampered[offset] ^= 0x01;
+            assert_eq!(
+                AccountContext::restore_from_storage(&tampered, &storage_key).err(),
+                Some(CryptoError::InvalidField),
+                "tamper at offset {offset} must fail closed"
+            );
+        }
+
+        assert_eq!(
+            AccountContext::restore_from_storage(&record[..record.len() - 1], &storage_key).err(),
+            Some(CryptoError::InvalidField)
+        );
+    }
+
+    #[test]
+    fn identity_storage_uses_fresh_nonce_and_rejects_unknown_version() {
+        let original = identity_initialize().unwrap();
+        let storage_key = [0xA5; 32];
+        let first = original.seal_for_storage_key(&storage_key).unwrap();
+        let second = original.seal_for_storage_key(&storage_key).unwrap();
+        assert_ne!(first, second, "fresh records should use fresh nonces");
+
+        let mut unsupported = first;
+        unsupported[IDENTITY_STORE_HEADER.len() - 1] = 2;
+        assert_eq!(
+            AccountContext::restore_from_storage(&unsupported, &storage_key).err(),
+            Some(CryptoError::InvalidField)
         );
     }
 

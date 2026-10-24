@@ -40,13 +40,124 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
+      - name: Install Android Emulator host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libpulse0
+
       - name: Install the pinned Android SDK packages
-        run: sdkmanager --install "platforms;android-34" "build-tools;34.0.0"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sdkmanager --install \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
+
+      - name: Pre-install Android Emulator with retries
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          SDK_ROOT_INPUT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+
+          if [[ -z "$SDK_ROOT_INPUT" || ! -d "$SDK_ROOT_INPUT" ]]; then
+            echo "::error::Android SDK root is empty or does not exist."
+            exit 1
+          fi
+
+          if ! SDK_ROOT="$(realpath -e -- "$SDK_ROOT_INPUT")"; then
+            echo "::error::Could not resolve Android SDK root."
+            exit 1
+          fi
+
+          # Guard every later cleanup operation against an invalid SDK path.
+          if [[ "$SDK_ROOT" == "/" ||
+                ! -d "$SDK_ROOT/cmdline-tools" ]]; then
+            echo "::error::Android SDK root is invalid: $SDK_ROOT"
+            exit 1
+          fi
+
+          SDKMANAGER="$(command -v sdkmanager || true)"
+
+          if [[ -z "$SDKMANAGER" ]]; then
+            for candidate in "$SDK_ROOT"/cmdline-tools/*/bin/sdkmanager; do
+              if [[ -x "$candidate" ]]; then
+                SDKMANAGER="$candidate"
+                break
+              fi
+            done
+          fi
+
+          if [[ -z "$SDKMANAGER" || ! -x "$SDKMANAGER" ]]; then
+            echo "::error::Executable sdkmanager was not found."
+            exit 1
+          fi
+
+          echo "Android SDK root: $SDK_ROOT"
+          echo "Using sdkmanager: $SDKMANAGER"
+          "$SDKMANAGER" --version || true
+
+          for attempt in 1 2 3; do
+            echo "Android Emulator installation attempt $attempt of 3"
+
+            # Capture sdkmanager's status explicitly so a broken pipe from
+            # the 'yes' process does not hide the package installation result.
+            set +e
+            set +o pipefail
+
+            yes | "$SDKMANAGER" --verbose --install emulator --channel=0
+            pipeline_status=( "${PIPESTATUS[@]}" )
+
+            set -e
+            set -o pipefail
+
+            yes_status="${pipeline_status[0]:-1}"
+            install_status="${pipeline_status[1]:-1}"
+
+            echo "yes exit code: $yes_status"
+            echo "sdkmanager exit code: $install_status"
+
+            if [[ "$install_status" -eq 0 &&
+                  -x "$SDK_ROOT/emulator/emulator" ]]; then
+              echo "PASS: Android Emulator package is installed."
+              "$SDK_ROOT/emulator/emulator" -version
+              exit 0
+            fi
+
+            if [[ "$install_status" -eq 0 ]]; then
+              echo "::warning::sdkmanager returned success, but the emulator executable is missing."
+              install_status=1
+            fi
+
+            echo "::warning::Android Emulator installation attempt $attempt failed with exit code $install_status."
+
+            # Clear only known SDK download/install paths. SDK_ROOT was
+            # resolved and validated above before these removals are allowed.
+            rm -rf -- \
+              "$SDK_ROOT/.temp" \
+              "$SDK_ROOT/.downloadIntermediates" \
+              "$SDK_ROOT/emulator"
+
+            if [[ -n "${HOME:-}" &&
+                  "$HOME" != "/" &&
+                  -d "$HOME/.android/cache" ]]; then
+              rm -rf -- "$HOME/.android/cache"
+            fi
+
+            if [[ "$attempt" -lt 3 ]]; then
+              sleep 10
+            fi
+          done
+
+          echo "::error::Android Emulator installation failed after 3 attempts."
+          exit 1
 
       - name: Verify checked-in native library ABI files
         shell: bash
         run: |
           set -euo pipefail
+
           ARM_LIB="apps/android/app/src/main/jniLibs/arm64-v8a/libpm_crypto_core.so"
           X64_LIB="apps/android/app/src/main/jniLibs/x86_64/libpm_crypto_core.so"
 
@@ -56,7 +167,7 @@ jobs:
           readelf -h "$ARM_LIB" | grep -Eq 'Machine:.*AArch64'
           readelf -h "$X64_LIB" | grep -Eq 'Machine:.*X86-64'
 
-          echo "Both native libraries exist and match their declared ABI directories."
+          echo "PASS: both native libraries exist and match their declared ABI directories."
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -64,12 +175,17 @@ jobs:
       - name: Build, lint, and run Android unit tests
         id: build
         working-directory: apps/android
-        run: bash ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
+        run: |
+          bash ./gradlew --no-daemon --stacktrace \
+            :app:testDebugUnitTest \
+            :app:lintDebug \
+            :app:assembleDebug
 
       - name: Verify both native libraries are packaged in the APK
         shell: bash
         run: |
           set -euo pipefail
+
           APK="apps/android/app/build/outputs/apk/debug/app-debug.apk"
 
           test -s "$APK"
@@ -81,10 +197,27 @@ jobs:
           echo "PASS: debug APK includes arm64-v8a and x86_64 native libraries."
 
       - name: Enable KVM for the emulator
+        shell: bash
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          set -euo pipefail
+
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+
+          if [[ -e /dev/kvm ]]; then
+            sudo chmod 0666 /dev/kvm
+
+            if [[ -r /dev/kvm && -w /dev/kvm ]]; then
+              echo "PASS: /dev/kvm is readable and writable."
+            else
+              echo "::warning::/dev/kvm exists, but is not readable and writable by this runner."
+            fi
+          else
+            echo "::warning::/dev/kvm is not available; emulator startup may use slower software acceleration."
+          fi
 
       - name: Boot app and exercise native UniFFI initialization on an emulator
         uses: reactivecircus/android-emulator-runner@v2
@@ -93,30 +226,15 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_5
+          cores: 2
           disable-animations: true
+          disable-linux-hw-accel: auto
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           working-directory: apps/android
-          script: |
-            set -eu
-
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb shell am force-stop org.sovereign.pm || true
-            adb logcat -c
-
-            adb shell am start -W -n org.sovereign.pm/.MainActivity
-
-            sleep 5
-            adb shell pidof org.sovereign.pm || (adb logcat -d; exit 1)
-
-            sleep 3
-            adb shell pidof org.sovereign.pm || (adb logcat -d; exit 1)
-
-            adb shell uiautomator dump /sdcard/pm-window.xml >/dev/null
-            adb pull /sdcard/pm-window.xml pm-window.xml
-
-            grep -Fq 'UniFFI CBOR: PASS' pm-window.xml
-            grep -Fq 'Account context: PASS' pm-window.xml
-
-            echo "PASS: app launched and its native UniFFI CBOR/account initialization path completed."
+          # The action executes each non-empty script line separately using /bin/sh.
+          # Run the complete multi-line Bash script from a separate file instead.
+          script: bash ../../.github/scripts/android-emulator-smoke.sh
 
       - name: Upload debug APK and emulator UI evidence
         if: always() && steps.build.outcome == 'success'

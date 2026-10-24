@@ -10,4 +10,6 @@ data class AccountIdentity(
 interface CryptoBridge {
     fun decodeStrictCanonical(bytes: ByteArray): ByteArray
     fun initializeAccount(): AccountIdentity
+    fun sealCurrentAccount(storageKey: ByteArray): ByteArray
+    fun restoreAccount(record: ByteArray, storageKey: ByteArray): AccountIdentity
 }
