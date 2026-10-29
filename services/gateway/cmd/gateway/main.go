@@ -15,6 +15,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/sovereign-messenger/private-messenger/services/gateway/internal/authorization"
 	"github.com/sovereign-messenger/private-messenger/services/gateway/internal/devices"
 	gwhttp "github.com/sovereign-messenger/private-messenger/services/gateway/internal/http"
 	"github.com/sovereign-messenger/private-messenger/services/gateway/internal/kt"
@@ -65,6 +66,13 @@ func main() {
 			messageDelivery,
 			messageAuthToken,
 		)
+		if os.Getenv("GATEWAY_ENABLE_CANDIDATE_ENROLLMENT") == "1" {
+			handler = gwhttp.NewHandlerWithCandidateEnrollment(
+				handler,
+				authorization.NewPostgresAuthorizer(db),
+			)
+			log.Printf("WARNING: candidate enrollment routes enabled; candidate protocol/API is not frozen and is not production-ready")
+		}
 
 		log.Printf("KT STH persistence enabled")
 		log.Printf("demo message relay enabled")

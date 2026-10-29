@@ -78,3 +78,14 @@ Do not mark the project production-ready or deploy it for real users until the a
 - [`docs/LOCAL_SETUP_WINDOWS.md`](https://github.com/Vineeth2002/private-messenger/blob/main/docs/LOCAL_SETUP_WINDOWS.md)
 - [`docs/phase0/02-threat-model.md`](https://github.com/Vineeth2002/private-messenger/blob/main/docs/phase0/02-threat-model.md)
 - [CI workflow](https://github.com/Vineeth2002/private-messenger/blob/main/.github/workflows/test-vectors-parity.yml)
+
+## Enrollment activation candidate - release status (2026-10-30)
+
+**Release decision: BLOCKED for production use.**
+
+- The legacy PostgreSQL `Enroll` method now fails closed with `ErrEnrollmentProofRequired`; repository searches found no production call site for `PostgresAuthorizer.Enroll`. The authorizer lives under Go's `internal` package boundary, so external Go modules cannot import it through normal Go package rules. Forks or copied implementations are outside this repository audit.
+- Candidate challenge and activation endpoints are opt-in and must remain disabled. The protocol/API is not frozen.
+- Candidate backend Go tests and PostgreSQL integration tests passed against the dedicated disposable database, but this does not substitute for end-to-end Android enrollment testing.
+- Android-to-gateway enrollment integration, the recovery-locked/48-hour recovery flow, and the broader release-gate items remain incomplete.
+
+Do not describe this candidate as production-ready or use it for sensitive conversations. Reassess this status only after the protocol is frozen, client/server integration and recovery behavior are complete, and the release gate is re-run with documented results.

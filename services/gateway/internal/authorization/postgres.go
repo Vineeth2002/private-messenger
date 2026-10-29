@@ -26,65 +26,11 @@ func (a *PostgresAuthorizer) Enroll(ctx context.Context, cert DeviceEnrollmentAu
 	if err := a.valid(); err != nil {
 		return err
 	}
-	if err := cert.Verify(recoveryPub); err != nil {
-		return err
-	}
-	tx, err := a.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	account, err := a.ensureAccountTx(ctx, tx, cert.AccountID, recoveryPub)
-	if err != nil {
-		return err
-	}
-	digest := cert.Digest()
-	if prior, ok, err := a.eventByDigestTx(ctx, tx, digest); err != nil {
-		return err
-	} else if ok {
-		_ = prior
-		return nil
-	}
-	if account.Epoch != cert.Epoch {
-		return ErrInvalidEpoch
-	}
-	if ev, ok, err := a.logicalEventTx(ctx, tx, "ENROLL", cert.AccountID, cert.Epoch, cert.Epoch, cert.DeviceID); err != nil {
-		return err
-	} else if ok {
-		if bytes.Equal(ev.Digest, digest[:]) {
-			return nil
-		}
-		return ErrAuthorizationConflict
-	}
-	var existingAccountID, existingDSK, existingDDHK []byte
-	var revoked sql.NullTime
-	var storedEpoch int64
-	err = tx.QueryRowContext(ctx, `SELECT uuid_send(account_id), dsk_pub, ddhk_pub, account_epoch, revoked_at FROM devices WHERE device_id=$1::uuid`, uuidText(cert.DeviceID)).Scan(&existingAccountID, &existingDSK, &existingDDHK, &storedEpoch, &revoked)
-	if err == nil {
-		if len(existingAccountID) != 16 || !bytes.Equal(existingAccountID, cert.AccountID[:]) || len(existingDSK) != 32 || len(existingDDHK) != 32 || !bytes.Equal(existingDSK, cert.DSKPub[:]) || !bytes.Equal(existingDDHK, cert.DDHKPub[:]) || revoked.Valid {
-			return ErrAuthorizationConflict
-		}
-		if storedEpoch < 1 || uint64(storedEpoch) != cert.Epoch {
-			return ErrInvalidEpoch
-		}
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO authorization_devices (device_id,account_id,dsk_pub,ddhk_pub,status,authorized_epoch,enrollment_auth_digest,revoked_epoch) VALUES ($1::uuid,$2::uuid,$3,$4,1,$5,$6,0)`, uuidText(cert.DeviceID), uuidText(cert.AccountID), cert.DSKPub[:], cert.DDHKPub[:], int64(cert.Epoch), digest[:])
-	if err != nil {
-		return err
-	}
-	if account.Status == AccountRecoveryLocked {
-		if _, err = tx.ExecContext(ctx, `UPDATE authorization_accounts SET status=1, updated_at=now() WHERE account_id=$1::uuid`, uuidText(cert.AccountID)); err != nil {
-			return err
-		}
-	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO authorization_events (auth_digest,kind,account_id,old_epoch,new_epoch,target_device_id,cert_cbor) VALUES ($1,'ENROLL',$2,$3,$4,$5::uuid,$6)`, digest[:], uuidText(cert.AccountID), int64(cert.Epoch), int64(cert.Epoch), uuidText(cert.DeviceID), cert.Raw); err != nil {
-		return err
-	}
-	return tx.Commit()
+	// A recovery-signed public-key certificate alone does not prove possession
+	// of the DSK. All activation must use ActivateCandidateEnrollment, which
+	// checks a live database challenge and commits its consumption atomically.
+	return ErrEnrollmentProofRequired
 }
-
 func (a *PostgresAuthorizer) Transition(ctx context.Context, cert EpochTransitionAuthorizationV1, recoveryPub [32]byte) error {
 	if err := a.valid(); err != nil {
 		return err

@@ -177,7 +177,7 @@ The current Rust `authorization_v1.rs` implements recovery commitment and certif
 
 Before making a newly enrolled device active, require a replay-resistant proof that the device controls the DSK private key corresponding to the public key in the recovery-signed enrollment certificate. The proof must be bound to the account, device, epoch, enrollment certificate digest, and a one-time challenge or equivalent non-replayable context. Define its canonical wire format and shared Rust/Go vectors before freeze. A recovery signature over a public key alone does not demonstrate that the enrolling device possesses the matching private key.
 
-A recovery-locked account must not become active merely because an enrollment certificate was parsed or its public-key fields were inserted. Unlock only after the complete new-device enrollment path succeeds, including proof of possession and all current-epoch checks. The current Go `PostgresAuthorizer.Enroll` changes the account status from recovery-locked to active in the enrollment transaction; review and revise that path when the proof-of-possession contract is implemented.
+A recovery-locked account must not become active merely because an enrollment certificate was parsed or its public-key fields were inserted. Unlock only after the complete new-device enrollment path succeeds, including proof of possession and all current-epoch checks. The legacy Go `PostgresAuthorizer.Enroll` path now fails closed with `ErrEnrollmentProofRequired` and does not activate a device from a recovery-signed certificate alone. The candidate challenge-and-proof activation path remains disabled by default and is not production-ready; keep recovery-locked accounts locked until the complete approved recovery and enrollment flow succeeds.
 
 ### 10.3 Pending-recovery serialization
 
@@ -333,3 +333,13 @@ Before a native device context signs `DeviceEnrollmentPoPV1`, it MUST validate t
 Add explicit tests that reject: a recovery request and enrollment certificate verified by different recovery keys; a recovery PoP challenge requested before request finalization; a native context whose DSK matches but DDHK does not match the referenced certificate; mismatched AccountID/DeviceID/epoch; and a caller-supplied digest that does not equal the SHA-256 digest of the exact canonical signed certificate bytes. Include Rust/Go parity where both sides implement the relevant validation.
 
 The new requirements remain review gates. Sections 11 and 12 are candidate design only; the protocol remains NOT FROZEN.
+
+## Enrollment activation candidate status (2026-10-30)
+
+The PostgreSQL enrollment path has been changed to fail closed: `PostgresAuthorizer.Enroll` returns `ErrEnrollmentProofRequired` and does not activate a device from a recovery-signed certificate alone. The candidate activation path requires a database-issued, short-lived challenge and device-signing-key proof of possession, and commits device records, certificate storage, authorization records, the authorization event, and challenge consumption in one transaction.
+
+The candidate HTTP endpoints are `/v1/candidate/enrollment/challenges` and `/v1/candidate/enrollment/activate`. They are disabled unless `GATEWAY_ENABLE_CANDIDATE_ENROLLMENT=1` is explicitly set. Keep them disabled: the endpoint contract remains a candidate and is not frozen for production.
+
+This candidate path supports active-account enrollment only. Recovery-locked activation and the 48-hour recovery workflow are not implemented by these endpoints. Rust and Go contain candidate proof parsing/vector tests, but the Android-to-gateway enrollment flow is not yet integrated end to end.
+
+Validation performed for this candidate change included Go tests and opt-in PostgreSQL integration tests against the dedicated disposable test database `pm_enrollment_test_20261030`. Those results validate the tested candidate path only; they do not establish production readiness or complete end-to-end application readiness.

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -241,18 +242,34 @@ func validBearer(header, expected string) bool {
 }
 
 func remoteKey(r *http.Request) string {
-	return r.RemoteAddr
+	// RemoteAddr is supplied by the HTTP server. Do not trust client-controlled
+	// forwarding headers here, and do not include the ephemeral source port.
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err != nil {
+		return "unknown"
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return "unknown"
+	}
+	if ipv4 := ip.To4(); ipv4 != nil {
+		return ipv4.String()
+	}
+	return ip.String()
 }
 
 func envelopeIDString(id [16]byte) string {
 	return messages.UUIDText(id)
 }
 
+const demoMessageLimiterMaxEntries = 4096
+
 type demoMessageLimiter struct {
-	mu      sync.Mutex
-	limit   int
-	window  time.Duration
-	entries map[string]demoLimitEntry
+	mu        sync.Mutex
+	limit     int
+	window    time.Duration
+	entries   map[string]demoLimitEntry
+	lastSweep time.Time
 }
 
 type demoLimitEntry struct {
@@ -273,7 +290,35 @@ func (l *demoMessageLimiter) Allow(key string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	entry := l.entries[key]
+	// Bound memory if many distinct peers appear. Sweep periodically rather than
+	// scanning the whole map for every new peer while at capacity.
+	sweepInterval := l.window / 4
+	if sweepInterval <= 0 {
+		sweepInterval = time.Second
+	}
+	if sweepInterval > 15*time.Second {
+		sweepInterval = 15 * time.Second
+	}
+	if l.lastSweep.IsZero() || now.Sub(l.lastSweep) >= sweepInterval {
+		for candidate, candidateEntry := range l.entries {
+			if candidateEntry.started.IsZero() || now.Sub(candidateEntry.started) >= l.window {
+				delete(l.entries, candidate)
+			}
+		}
+		l.lastSweep = now
+	}
+
+	if l.entries == nil {
+		l.entries = make(map[string]demoLimitEntry)
+	}
+	entry, exists := l.entries[key]
+	if !exists {
+		if len(l.entries) >= demoMessageLimiterMaxEntries {
+			return false
+		}
+		l.entries[key] = demoLimitEntry{started: now, count: 1}
+		return true
+	}
 	if entry.started.IsZero() || now.Sub(entry.started) >= l.window {
 		l.entries[key] = demoLimitEntry{started: now, count: 1}
 		return true
