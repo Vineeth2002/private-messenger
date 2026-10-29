@@ -3,14 +3,12 @@
 A global private messenger engineered in India: persistent application data hosted in India, E2EE
 with client-owned cryptographic state, server as delivery/control plane only.
 
-**Status: Phase A is complete.** The Phase A gate was met on 2026-10-05 on a real Windows machine (Rust 1.81.0, Go 1.22.6):
-both builds, both CBOR test suites, the independent Python vector checker and 101-vector Rust/Go parity all passed.
-Phase B (PM-BI-X3DH-1, Double Ratchet, media AEAD, HPKE push, transparency) is **in progress**: PM-BI-X3DH-1, the core
-Double Ratchet state machine, deterministic reorder/replay vectors, media/HPKE cryptographic boundaries, and the KT V1
-reference/vector gate plus Rust cryptographic boundary are implemented and verified on the owner's Windows machine. The
-remaining KT work is the gateway/API, persistence, witness-service integration, and device authorization boundaries. It proceeds
-one boundary at a time, each proven against `test-vectors/v1/` before the next. Not for production use. Not audited.
+**Status snapshot: 2026-10-24. Phase A gate: complete. Phase B: in progress.** The initial Phase A gate passed on a real Windows machine; the current `main` commit is `10c6772e8095d5c3db9a22e557aac92a64ff1a45`.
+GitHub Actions on that commit passed Android build/lint/unit tests/emulator startup, Android identity-storage instrumentation, and the Rust/Go/shared-vector parity workflow. See the current [Android build run](https://github.com/Vineeth2002/private-messenger/actions/runs/40108208245), [identity run](https://github.com/Vineeth2002/private-messenger/actions/runs/40108208230), and [vector parity run](https://github.com/Vineeth2002/private-messenger/actions/runs/40108208237).
 
+The Rust core contains PM-BI-X3DH-1 and Cert_dh verification, Double Ratchet core and reorder/replay handling, media chunk AEAD, HPKE push cryptography, Key Transparency V1 verification, and authorization primitives. The Go gateway has PostgreSQL-backed demo message delivery, device-directory reads, some transparency storage/proof services, and authorization packages. Android builds and exercises identity persistence through the Rust bridge.
+
+**This is not yet a usable end-to-end messaging app.** Android currently presents a diagnostics/identity screen; its client does not yet complete session establishment, ratchet send/receive, network delivery, and durable ratchet-state restoration as one flow. The current HTTP surface is not a complete authenticated per-device enrollment, recovery, transparency-proof and messaging API. iOS has no checked-in Xcode project and its platform key-protection implementation remains unimplemented. Real-device two-user validation, crash/recovery testing, deployment/operations hardening, formal analysis, and an independent cryptographic audit remain open. Not for production use. Not audited.
 ## Non-claims
 Hosted-in-India is not "all packets stay in India". APNs/FCM are external boundaries. Ed25519/X25519
 hardware execution is not universally available. Push is not authenticated content. Unit tests are not

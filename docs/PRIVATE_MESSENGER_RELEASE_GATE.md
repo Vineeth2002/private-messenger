@@ -2,39 +2,36 @@
 
 **Current decision: BLOCKED for production use.**
 
-This checklist is based on the repository state inspected on 2026-10-20. It is a release control document, not a claim that the listed tests or reviews have already been completed.
+This checklist reflects the repository at `main` commit [`10c6772e8095d5c3db9a22e557aac92a64ff1a45`](https://github.com/Vineeth2002/private-messenger/commit/10c6772e8095d5c3db9a22e557aac92a64ff1a45), inspected on 2026-10-24. It is a release control document, not a claim that the uncompleted gates have passed.
 
 ## Verified baseline
 
-- [x] The vector-manifest fix is merged into `main` at merge commit [`a27362ac79cc405aab4a7dc6b947eddf03ae71a2`](https://github.com/Vineeth2002/private-messenger/commit/a27362ac79cc405aab4a7dc6b947eddf03ae71a2).
-- [x] GitHub Actions run [#22](https://github.com/Vineeth2002/private-messenger/actions/runs/39433309911) passed on that merge commit.
-- [x] The passing workflow covers deterministic shared-vector generation and checks, Rust tests, Go module verification/vetting/tests, and Rust–Go vector parity.
-- [x] The repository README states “Not for production use. Not audited.”
-- [x] The README identifies gateway/API, persistence, witness-service integration, and device-authorization boundaries as remaining work.
-- [x] The threat model says an independent third-party cryptographic audit is required.
-
+- [x] The vector-manifest fix and Android CI fixes are merged into `main` at commit [`10c6772e8095d5c3db9a22e557aac92a64ff1a45`](https://github.com/Vineeth2002/private-messenger/commit/10c6772e8095d5c3db9a22e557aac92a64ff1a45).
+- [x] Android build, lint, unit tests, APK assembly and emulator startup smoke passed on this commit in [run #14](https://github.com/Vineeth2002/private-messenger/actions/runs/40108208245).
+- [x] Native Rust Android libraries were rebuilt from source and Android Keystore + UniFFI identity-storage instrumentation passed in [run #12](https://github.com/Vineeth2002/private-messenger/actions/runs/40108208230).
+- [x] Rust, Go, independent Python reference/vector checks and shared-vector parity passed in [run #52](https://github.com/Vineeth2002/private-messenger/actions/runs/40108208237).
+- [x] The README and threat model state that the project is not for production use and has not had an independent cryptographic audit.
+- [x] Current code includes a PostgreSQL-backed demo message relay, device-directory reads, Key Transparency storage/proof components, and authorization components; end-to-end integration remains incomplete.
 **Important:** Passing the existing CI verifies the checks configured in that workflow. It does not verify mobile builds, complete product behavior, deployment configuration, or cryptographic security through independent review.
 
 ## Release-blocking gates
 
 ### 1. Reconcile the project status documentation
 
-- [ ] Update `docs/PHASE_B_GATE.md` so its status matches the current implementation; it contains older statements saying Double Ratchet, media, push, and transparency work was not started.
-- [ ] Update `docs/IMPLEMENTATION_NOTES.md` to distinguish completed, in-progress, unimplemented, and independently verified components. Resolve stale statements such as “Android/iOS projects are skeletons that have never been built” with actual build evidence.
-- [ ] Declare the first release's supported platforms and features. Do not imply iOS support unless an iOS build and device validation actually pass.
-- [ ] Replace placeholder license and Go module metadata before public distribution.
-
+- [x] Update `docs/PHASE_B_GATE.md` to preserve the 2026-10-05 unlock as historical evidence and show the current Phase B status without implying production readiness.
+- [x] Update `docs/IMPLEMENTATION_NOTES.md` to distinguish implemented cryptographic modules, passing Android CI, existing backend storage/proof/authorization code, and missing end-to-end integration.
+- [ ] Declare the first release's exact supported platforms and features. Do not imply iOS support unless Xcode build and device validation pass.
+- [ ] Choose the project license and confirm the canonical Go module path before external distribution.
 ### 2. Client build and device validation
 
-- [ ] Establish a reproducible Android build using pinned toolchain/dependency versions.
-- [ ] Add Android build and automated test jobs to CI where practical; record which device-level tests require physical hardware.
-- [ ] Test on supported Android devices: first install, registration/device authorization, message send/receive, app background/foreground, process kill/restart, app upgrade, and local-state failure/recovery.
-- [ ] If iOS is in release scope, establish reproducible Xcode build/tests and validate on supported iOS devices. Otherwise mark iOS out of scope for the release.
-
+- [ ] Confirm fully reproducible Android builds with pinned toolchains and dependencies for the declared release scope.
+- [x] Add Android build/lint/unit-test/emulator-startup CI and native-library rebuild + identity-storage instrumentation CI. These checks do not replace physical-device acceptance testing.
+- [ ] Test on supported physical Android devices: first install, authorized registration, message send/receive, background/foreground, process kill/restart, app upgrade, and local-state failure/recovery.
+- [ ] Decide and document whether iOS is out of scope for the first release. If included, establish an Xcode project, reproducible build/tests, and supported-device validation.
 ### 3. End-to-end messaging and service integration
 
 - [ ] Demonstrate the complete two-device path: device setup, authenticated key establishment, first message, reply, offline recipient delivery, restart, and recovery.
-- [ ] Finish and test the gateway/API, durable persistence, witness/transparency integration, and device authorization boundaries identified in the README.
+- [ ] Complete and integrate production client/API contracts, durable ratchet-state persistence, Key Transparency publication/proof/witness endpoints, and authenticated device enrollment/revocation/recovery routes. Existing PostgreSQL demo delivery, transparency stores/proof services, and authorization packages do not by themselves satisfy this gate.
 - [ ] Verify that authentication/decryption failures, malformed input, and replays leave ratchet and durable application state unchanged.
 - [ ] Test tampered ciphertext, invalid identity/key binding, stale keys, skipped/out-of-order messages, duplicated delivery, and replay attempts.
 - [ ] Test concurrent message processing, process termination during state changes, database restart, backup/restore, and rollback behavior; verify that keys/counters cannot be silently reused or rolled back.

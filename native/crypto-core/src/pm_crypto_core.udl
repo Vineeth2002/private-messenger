@@ -24,6 +24,9 @@ interface AccountContext {
 
     [Throws=CryptoError]
     bytes sign_transparency_leaf(u64 epoch, bytes cert_dh, bytes spk_pub, bytes push_pk);
+
+    [Throws=CryptoError]
+    bytes sign_device_enrollment_pop_for_challenge(bytes enrollment_certificate, bytes challenge_id, bytes challenge_nonce);
 };
 
 interface RecoveryContext {
@@ -32,6 +35,9 @@ interface RecoveryContext {
 
     [Throws=CryptoError]
     bytes sign_device_enrollment(bytes account_id, u64 epoch, bytes device_id, bytes dsk_pub, bytes ddhk_pub);
+
+    [Throws=CryptoError]
+    bytes sign_device_enrollment_for_device(AccountContext device, u64 epoch);
 
     [Throws=CryptoError]
     bytes sign_epoch_transition(bytes account_id, u64 old_epoch, u64 new_epoch, u64 action, bytes device_id);
@@ -43,6 +49,9 @@ namespace pm_crypto_core {
 
     [Throws=CryptoError]
     AccountContext identity_initialize();
+
+    [Throws=CryptoError]
+    AccountContext device_initialize_for_account(bytes account_id);
 
     [Throws=CryptoError]
     AccountContext identity_restore(bytes record, bytes storage_key);

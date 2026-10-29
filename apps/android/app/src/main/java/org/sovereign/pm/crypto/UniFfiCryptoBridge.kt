@@ -1,4 +1,4 @@
-﻿package org.sovereign.pm.crypto
+package org.sovereign.pm.crypto
 
 import org.sovereign.pm.crypto.uniffi.AccountContext
 import org.sovereign.pm.crypto.uniffi.decodeStrictCanonical as nativeDecodeStrictCanonical
@@ -29,6 +29,16 @@ class UniFfiCryptoBridge : CryptoBridge {
         return handle.toPublicIdentity()
     }
 
+    /**
+     * Starts a separate in-memory enrollment context for a new device under an existing account.
+     * It does not replace the bridge's current account handle or activate the new device.
+     */
+    fun beginAdditionalDeviceEnrollment(existingAccountId: ByteArray): NativeDeviceEnrollmentSession =
+        NativeDeviceEnrollmentSession.create(existingAccountId)
+
+    /** Restore a separately persisted enrollment-device context without changing the current account. */
+    fun restoreAdditionalDeviceEnrollment(record: ByteArray, storageKey: ByteArray): NativeDeviceEnrollmentSession =
+        NativeDeviceEnrollmentSession.restore(record, storageKey)
     private fun AccountContext.toPublicIdentity() = AccountIdentity(
         accountId = accountId(),
         deviceId = deviceId(),

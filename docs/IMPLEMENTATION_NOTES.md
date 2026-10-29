@@ -23,19 +23,20 @@ No hex value changed when these were marked resolved: only status/note strings i
 | Recovery-secret rotation | RESOLVED per architects; procedure text to be added to 08. Nothing is implemented in Phase A |
 | Context encoding, AAD_msg, media nonce, codec bounds | RESOLVED (architecture review lock) |
 
-Genuinely open / future (none implemented in Phase A):
-- Reorder/replay vectors for skipped-key and out-of-order semantics: implementation is now in Rust; `double_ratchet_reorder.json` remains placeholder-locked until Step 3.
-- Epoch-transition certificate fields and the account-level device certificate details.
-- A conforming `MessageEnvelopeV1` vector is now generated at `test-vectors/v1/message_envelope.json`; the CBOR `envelope_illustrative` vector remains a generic codec vector and is not an instance.
-
+Implementation state as of 2026-10-24:
+- Reorder/replay vectors are active and implemented in Rust; see sections G-H for the ratchet and vector boundaries.
+- A conforming `MessageEnvelopeV1` vector exists at `test-vectors/v1/message_envelope.json`; `envelope_illustrative` remains a generic codec vector, not a conforming envelope instance.
+- The frozen epoch-transition and account-level device-authorization shapes have implementation artifacts, but the complete authorized device lifecycle still needs application/API integration.
 ## C. Implementation decisions
 - CBOR codecs are hand-written over raw bytes (no `ciborium`) so strictness cannot be loosened by a library; `fxamacker/cbor/v2` is used only in `internal/cbor/typed`, always behind `DecodeStrict`.
 - Extra categories `ERR_UNSUPPORTED_ITEM` (tags, simple values other than false/true/null) and `ERR_LIMIT_EXCEEDED` (all codec bounds); ints limited to [-2^64, 2^64-1]; `true/false/null` accepted.
 - Error precedence is specified in 11-pmacbor-2026.md so Rust and Go agree on category.
 - `IRC` = plain concatenation of ASCII domain string and public key (as written).
 - Recovery fixture uses the public zero-entropy BIP-39 mnemonic; cross-checked against the published TREZOR seed.
-- Unused crates (`x25519-dalek`, `chacha20poly1305`, UniFFI) deliberately not added until their boundary unlocks.
-- `LICENSE` is a proprietary placeholder; Go module path is a placeholder. Android/iOS projects are skeletons that have never been built.
+- Current Rust dependencies include X25519, ChaCha20-Poly1305, and UniFFI; this supersedes the initial Phase A dependency inventory. Apply the MSRV-aware dependency rule recorded in section E when changing dependencies.
+- `LICENSE` remains a proprietary placeholder and must be resolved before external distribution. The Go module path is currently `github.com/sovereign-messenger/private-messenger/services/gateway`; confirm it is the intended canonical import path before public distribution.
+- Android is no longer an unbuilt skeleton: Android build/lint/unit tests, emulator startup smoke, native-library rebuild, and Android Keystore + UniFFI identity-storage instrumentation pass in GitHub Actions on `main` as of 2026-10-24. The Android UI is still a diagnostics/identity screen without integrated chat networking.
+- iOS remains a skeleton: no Xcode project/workspace is checked in, and the current platform key-protection implementation is intentionally unimplemented. No Xcode build or iOS device validation is claimed.
 
 ## D. Architecture Review Lock (ChatGPT + Gemini memo): applied
 ARCHITECTURAL: the memo supersedes the original handshake KDF (salt, RootKey_0/ChainKey_0, single epoch) with the
@@ -64,9 +65,7 @@ New vectors (Python reference model, recomputed by independent `cryptography` HK
 ## E. Verification status (as of 2026-10-05)
 Executed on the owner's Windows PC, from real compiler and test output: Rust 1.81.0 build and 13 tests (8 library + 2 cbor_vectors + 3 recovery_vectors); Go 1.22.6 build, vet and tests
 (cbor, cbor/typed, http); the independent Python vector checker; Rust/Go parity 101/101. Also executed in the authoring sandbox: Python generation/validation and deliberate-tamper tests.
-NOT executed anywhere: Gradle (Android), Xcode (iOS), `tools/run_all.ps1`, the GitHub Actions workflow (nothing pushed yet).
-Not written: Rust/Go implementations of X3DH, ratchet and media. The gate is met; the next stage is PM-BI-X3DH-1 in Rust against `bi_x3dh_handshake.json`.
-
+At the 2026-10-05 verification snapshot, Gradle (Android), Xcode (iOS), `tools/run_all.ps1`, and GitHub Actions had not yet been executed because the repository had not been pushed. At that historical point, Rust/Go implementations of X3DH, Double Ratchet and media had not yet been written. Later Phase B implementation is recorded in sections G-K, and current Android CI evidence is linked in `README.md` and `docs/PRIVATE_MESSENGER_RELEASE_GATE.md`.
 ## F. Corrections received after review (resolved; applied in place)
 1. **AAD epoch**: `MessageEnvelope.field_5 == AAD account_epoch == Epoch_B` (recipient). Epoch_A stays only in the HKDF Context and in the
    authenticated `PrekeyHandshakeHeader.sender_account_epoch`. Generator uses `eb`; `double_ratchet_linear.json` ciphertext/AAD changed accordingly; the checker
@@ -151,5 +150,11 @@ Verified on the owner's Windows checkout:
 
 The KT history inclusion verifier also enforces the frozen `sequence == index + 1` publication-order invariant.
 
-This step does not implement gateway/API transport, PostgreSQL transparency-node persistence, witness-service integration,
-account-level device authorization, epoch-transition authorization, recovery/revocation workflow, or client persistence/serialization.
+**Remaining integration status as of 2026-10-24:**
+- **Gateway/API:** the current HTTP wiring exposes signed-tree-head retrieval (`GET /v1/kt/sth`) and demo message relay/device-directory reads. It does not expose a complete production publication, current-state proof, history-consistency proof, witness and authenticated device-lifecycle workflow.
+- **PostgreSQL:** migrations and stores exist for signed tree heads, current transparency state, history entries, message envelopes and authorization state. Code presence does not prove production deployment, operational migration management, or that every publication step is wired atomically through public endpoints.
+- **Witnesses and client verification:** verifier and proof-service components exist, but deployed independent witness services, operational witness-key management, quorum-backed client verification and end-to-end tests remain open.
+- **Device lifecycle:** enrollment/epoch-transition authorization and PostgreSQL authorizer logic exist. They are not yet exposed as a complete authenticated public enrollment/revocation/recovery workflow integrated with device-directory changes, transparency publication and messaging routes.
+- **Client:** Double Ratchet serialization/persistence is still absent. The Android UniFFI/API layer does not expose a complete session-establishment and ratchet send/receive workflow, and the UI is not yet a chat client.
+
+These are integration and production-readiness gaps; they do not mean the underlying cryptographic, storage, proof or authorization modules are absent.
