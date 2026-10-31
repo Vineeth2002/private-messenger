@@ -38,6 +38,10 @@ for e in man["files"]:
     if e["status"] == "PLACEHOLDER_LOCKED":
         _, d = load(e["path"])
         check(d.get("vectors") == [], f"placeholder {e['path']} must contain no vectors")
+    elif e["status"] == "CANDIDATE_NOT_FROZEN":
+        _, d = load(e["path"])
+        check(d.get("status") == "candidate_not_frozen",
+              f"candidate {e['path']} must remain not frozen")
 
 # CBOR
 _, c = load("cbor_canonical_codec.json")

@@ -42,6 +42,11 @@
       "sha256": "e0b4394e064a2be68aac2dc7a798119be4f72cc8ec67d9497084494b4ccc2f2d"
     },
     {
+      "path": "lifecycle_wire_v1.json",
+      "status": "CANDIDATE_NOT_FROZEN",
+      "sha256": "408da1804d8a5478962f20845fcfbcdcaaa59e3b039d3fd30ce30bb359111925"
+    },
+    {
       "path": "media_chunk_aead.json",
       "status": "ACTIVE",
       "sha256": "8b95fa1aa96552eb113b47a08330c32c0276cebf67929b394d18d3030706daa5"
