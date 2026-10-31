@@ -62,7 +62,7 @@ fi
 adb shell uiautomator dump /sdcard/pm-window.xml
 adb pull /sdcard/pm-window.xml pm-window.xml
 
-grep -Fq 'UniFFI CBOR: PASS' pm-window.xml
+grep -Fq 'UniFFI canonical CBOR: PASS' pm-window.xml
 grep -Fq 'Identity storage: CREATED_AND_PERSISTED' pm-window.xml
 grep -Fq 'At-rest encryption: PASS' pm-window.xml
 
