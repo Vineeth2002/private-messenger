@@ -11,6 +11,8 @@ use crate::ffi::identity_restore;
 #[deny(unsafe_code)]
 pub mod authorization_v1;
 #[deny(unsafe_code)]
+pub mod device_request_auth_v1;
+#[deny(unsafe_code)]
 pub mod cbor;
 #[deny(unsafe_code)]
 pub mod double_ratchet;
@@ -34,9 +36,12 @@ mod ffi;
 
 pub use cbor::CborError;
 pub use ffi::{
-    decode_strict_canonical, identity_initialize, recovery_initialize, AccountContext, CryptoError,
-    RecoveryContext,
+    decode_strict_canonical, device_initialize_for_account, identity_initialize,
+    recovery_initialize, recovery_mnemonic_generate,
+    AccountContext, CryptoError, RecoveryContext,
 };
 
 // UniFFI-generated C-ABI scaffolding must remain at crate root.
 uniffi::include_scaffolding!("pm_crypto_core");
+
+pub mod signed_prekey_v1;

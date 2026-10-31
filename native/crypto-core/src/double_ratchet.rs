@@ -414,9 +414,21 @@ pub fn receive_first_dh_ratchet(
     state: &mut RatchetState,
     peer_ratchet_pub: [u8; 32],
 ) -> Result<(), RatchetError> {
-    if state.dhr_pub == Some(peer_ratchet_pub) || state.ck_r.is_some() {
+    // This helper is only valid for Alice's state after Message 0 and before
+    // the first peer reply. Reject every other lifecycle shape before DH/KDF
+    // work so malformed state cannot be partially advanced.
+    let valid_pre_first_reply_state = state.dhr_pub.is_some()
+        && state.dhr_pub != Some(peer_ratchet_pub)
+        && state.ck_s.is_some()
+        && state.ck_r.is_none()
+        && state.ns >= 1
+        && state.nr == 0
+        && state.pn == 0
+        && state.skipped_keys.is_empty();
+    if !valid_pre_first_reply_state {
         return Err(RatchetError::InvalidInitialState);
     }
+
     let dh_out = dh_bytes(&state.dhs_priv, &peer_ratchet_pub)?;
     let (rk_next, ck_r) = kdf_rk(&state.rk, &dh_out);
 
@@ -807,6 +819,7 @@ mod tests {
         u32,
         u32,
         u32,
+        Vec<(SkippedMessageKeyId, RatchetKey)>,
     ) {
         (
             *state.rk,
@@ -818,6 +831,7 @@ mod tests {
             state.ns,
             state.nr,
             state.pn,
+            state.skipped_keys.iter().map(|(id, key)| (*id, **key)).collect(),
         )
     }
 
@@ -836,6 +850,13 @@ mod tests {
             arr::<32>(alice["dhs_a0_priv"].as_str().unwrap()),
         )
         .unwrap();
+        // Put Alice in the valid post-Message-0/pre-reply shape so this test
+        // reaches the contributory-DH check rather than the lifecycle guard.
+        state.rk = Zeroizing::new(arr::<32>(alice["rk_a"].as_str().unwrap()));
+        state.ck_s = Some(Zeroizing::new(arr::<32>(
+            alice["ck_s_after_msg0"].as_str().unwrap(),
+        )));
+        state.ns = alice["ns_after"].as_u64().unwrap() as u32;
 
         let before = state_snapshot(&state);
 
@@ -883,6 +904,194 @@ mod tests {
         assert_eq!(state.pn, 1);
         assert_eq!(state.ns, 0);
         assert_eq!(state.nr, 0);
+    }
+
+    #[test]
+    fn receive_first_dh_ratchet_rejects_pre_message0_and_bob_initial_states() {
+        let v = load();
+        let x = load_x3dh();
+        let sk = arr::<32>(v["sk"].as_str().unwrap());
+        let alice = &v["alice"];
+        let spk_b_pub =
+            arr::<32>("ec8c415e81fc6095efe84f8c418d7387acea1cd8faad6f48dc2d7f486c9ecb57");
+        let bob_dhs_b1_pub = arr::<32>(v["bob"]["dhs_b1_pub"].as_str().unwrap());
+
+        let mut alice_before_message0 = RatchetState::init_alice(
+            &sk,
+            &spk_b_pub,
+            arr::<32>(alice["dhs_a0_priv"].as_str().unwrap()),
+        )
+        .unwrap();
+        let before_alice = state_snapshot(&alice_before_message0);
+        assert_eq!(
+            receive_first_dh_ratchet(&mut alice_before_message0, bob_dhs_b1_pub).unwrap_err(),
+            RatchetError::InvalidInitialState
+        );
+        assert_eq!(state_snapshot(&alice_before_message0), before_alice);
+
+        let spk_b_priv = arr::<32>(x["cases"][0]["inputs"]["spk_b_priv"].as_str().unwrap());
+        let mut bob_before_message0 = RatchetState::init_bob(&sk, spk_b_priv);
+        let before_bob = state_snapshot(&bob_before_message0);
+        assert_eq!(
+            receive_first_dh_ratchet(&mut bob_before_message0, bob_dhs_b1_pub).unwrap_err(),
+            RatchetError::InvalidInitialState
+        );
+        assert_eq!(state_snapshot(&bob_before_message0), before_bob);
+    }
+
+    #[test]
+    fn receive_first_dh_ratchet_rejects_inconsistent_alice_pre_reply_shapes_without_mutating_state() {
+        let v = load();
+        let sk = arr::<32>(v["sk"].as_str().unwrap());
+        let alice = &v["alice"];
+        let spk_b_pub =
+            arr::<32>("ec8c415e81fc6095efe84f8c418d7387acea1cd8faad6f48dc2d7f486c9ecb57");
+        let bob_dhs_b1_pub = arr::<32>(v["bob"]["dhs_b1_pub"].as_str().unwrap());
+        let make_alice_after_message0 = || {
+            let mut state = RatchetState::init_alice(
+                &sk,
+                &spk_b_pub,
+                arr::<32>(alice["dhs_a0_priv"].as_str().unwrap()),
+            )
+            .unwrap();
+            state.rk = Zeroizing::new(arr::<32>(alice["rk_a"].as_str().unwrap()));
+            state.ck_s = Some(Zeroizing::new(arr::<32>(
+                alice["ck_s_after_msg0"].as_str().unwrap(),
+            )));
+            state.ns = alice["ns_after"].as_u64().unwrap() as u32;
+            state
+        };
+
+        let mut nonzero_nr = make_alice_after_message0();
+        nonzero_nr.nr = 1;
+        let before = state_snapshot(&nonzero_nr);
+        assert_eq!(
+            receive_first_dh_ratchet(&mut nonzero_nr, bob_dhs_b1_pub).unwrap_err(),
+            RatchetError::InvalidInitialState
+        );
+        assert_eq!(state_snapshot(&nonzero_nr), before);
+
+        let mut nonzero_pn = make_alice_after_message0();
+        nonzero_pn.pn = 1;
+        let before = state_snapshot(&nonzero_pn);
+        assert_eq!(
+            receive_first_dh_ratchet(&mut nonzero_pn, bob_dhs_b1_pub).unwrap_err(),
+            RatchetError::InvalidInitialState
+        );
+        assert_eq!(state_snapshot(&nonzero_pn), before);
+
+        let mut existing_receiving_chain = make_alice_after_message0();
+        existing_receiving_chain.ck_r = Some(Zeroizing::new([0xA5; 32]));
+        let before = state_snapshot(&existing_receiving_chain);
+        assert_eq!(
+            receive_first_dh_ratchet(&mut existing_receiving_chain, bob_dhs_b1_pub).unwrap_err(),
+            RatchetError::InvalidInitialState
+        );
+        assert_eq!(state_snapshot(&existing_receiving_chain), before);
+
+        let mut retained_skipped_key = make_alice_after_message0();
+        retained_skipped_key.skipped_keys.insert(
+            SkippedMessageKeyId {
+                ratchet_public: [0x52; 32],
+                sequence_number: 7,
+            },
+            Zeroizing::new([0xA5; 32]),
+        );
+        let before = state_snapshot(&retained_skipped_key);
+        assert_eq!(
+            receive_first_dh_ratchet(&mut retained_skipped_key, bob_dhs_b1_pub).unwrap_err(),
+            RatchetError::InvalidInitialState
+        );
+        assert_eq!(state_snapshot(&retained_skipped_key), before);
+
+        let mut repeated_peer_key = make_alice_after_message0();
+        let same_peer_key = repeated_peer_key.dhr_pub.unwrap();
+        let before = state_snapshot(&repeated_peer_key);
+        assert_eq!(
+            receive_first_dh_ratchet(&mut repeated_peer_key, same_peer_key).unwrap_err(),
+            RatchetError::InvalidInitialState
+        );
+        assert_eq!(state_snapshot(&repeated_peer_key), before);
+    }
+
+    fn send_normal_before_first_peer_reply(
+        state: &mut RatchetState,
+        envelope_id: [u8; 16],
+        sender_device_id: &[u8; 16],
+        recipient_device_id: &[u8; 16],
+        plaintext: &[u8],
+    ) {
+        let header = NormalMessageHeader {
+            ratchet_public: state.dhs_pub,
+            previous_chain_length: state.pn,
+            sequence_number: state.ns,
+        };
+        let header_bytes = header.encode().unwrap();
+        let envelope = MessageEnvelopeRef {
+            protocol_version: 1,
+            envelope_id: &envelope_id,
+            sender_device_id,
+            recipient_device_id,
+            account_epoch: 3,
+            is_prekey_handshake: false,
+            ratchet_header_bytes: &header_bytes,
+            ciphertext: &[],
+        };
+        let (encoded_header, ciphertext) =
+            encrypt_message(state, envelope, &header, plaintext).unwrap();
+        assert_eq!(encoded_header, header_bytes);
+        assert!(!ciphertext.is_empty());
+    }
+
+    #[test]
+    fn alice_can_send_multiple_messages_before_first_peer_reply() {
+        let v = load();
+        let sk = arr::<32>(v["sk"].as_str().unwrap());
+        let alice = &v["alice"];
+        let spk_b_pub =
+            arr::<32>("ec8c415e81fc6095efe84f8c418d7387acea1cd8faad6f48dc2d7f486c9ecb57");
+        let bob_dhs_b1_pub = arr::<32>(v["bob"]["dhs_b1_pub"].as_str().unwrap());
+        let sender_device_id = [0x11; 16];
+        let recipient_device_id = [0x22; 16];
+        let mut state = RatchetState::init_alice(
+            &sk,
+            &spk_b_pub,
+            arr::<32>(alice["dhs_a0_priv"].as_str().unwrap()),
+        )
+        .unwrap();
+
+        // Start from the frozen post-Message-0 state (Ns=1), then actually
+        // encrypt two normal messages before accepting the peer's first reply.
+        state.rk = Zeroizing::new(arr::<32>(alice["rk_a"].as_str().unwrap()));
+        state.ck_s = Some(Zeroizing::new(arr::<32>(
+            alice["ck_s_after_msg0"].as_str().unwrap(),
+        )));
+        state.ns = 1;
+
+        send_normal_before_first_peer_reply(
+            &mut state,
+            [0x31; 16],
+            &sender_device_id,
+            &recipient_device_id,
+            b"alice message before reply 1",
+        );
+        assert_eq!(state.ns, 2);
+        send_normal_before_first_peer_reply(
+            &mut state,
+            [0x32; 16],
+            &sender_device_id,
+            &recipient_device_id,
+            b"alice message before reply 2",
+        );
+        assert_eq!(state.ns, 3);
+
+        let expected_ck_s = **state.ck_s.as_ref().unwrap();
+        receive_first_dh_ratchet(&mut state, bob_dhs_b1_pub).unwrap();
+        assert_eq!(state.pn, 3);
+        assert_eq!(state.ns, 0);
+        assert_eq!(state.nr, 0);
+        assert_eq!(state.ck_s.as_ref().map(|v| **v), Some(expected_ck_s));
+        assert!(state.ck_r.is_some());
     }
 
     #[test]

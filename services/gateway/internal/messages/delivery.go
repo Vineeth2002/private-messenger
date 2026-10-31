@@ -7,19 +7,42 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/sovereign-messenger/private-messenger/services/gateway/internal/authorization"
 )
 
 var (
-	ErrRecipientNotFound      = errors.New("recipient device not found")
-	ErrRecipientRevoked       = errors.New("recipient device revoked")
-	ErrRecipientEpochMismatch = errors.New("recipient account epoch mismatch")
-	ErrSenderNotFound         = errors.New("sender device not found")
-	ErrSenderRevoked          = errors.New("sender device revoked")
-	ErrEnvelopeNotFound       = errors.New("message envelope not found")
+	ErrRecipientNotFound            = errors.New("recipient device not found")
+	ErrRecipientRevoked             = errors.New("recipient device revoked")
+	ErrRecipientEpochMismatch       = errors.New("recipient account epoch mismatch")
+	ErrSenderNotFound               = errors.New("sender device not found")
+	ErrSenderRevoked                = errors.New("sender device revoked")
+	ErrSenderIdentityMismatch       = errors.New("authenticated device does not match envelope sender")
+	ErrAuthenticatedAccountInactive = errors.New("authenticated account is inactive")
+	ErrAuthenticatedDeviceInactive  = errors.New("authenticated device is inactive or revoked")
+	ErrAuthenticatedDeviceNotFound  = errors.New("authenticated device is not registered")
+	ErrAuthenticatedEpochMismatch   = errors.New("authenticated device epoch is stale")
+	ErrAuthenticatedDeviceState     = errors.New("authenticated device state is inconsistent")
+	ErrEnvelopeNotFound             = errors.New("message envelope not found")
 )
+
+// AuthenticatedDevice is the identity established by the request-auth layer.
+// Delivery methods re-check this state inside the same DB transaction as the
+// message operation, closing the gap between middleware authentication and use.
+type AuthenticatedDevice struct {
+	AccountID [16]byte
+	DeviceID  [16]byte
+	Epoch     uint64
+}
 
 type sqlDB interface {
 	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+type deliveryQueryer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row
@@ -40,16 +63,34 @@ func NewDeliveryService(db sqlDB) *DeliveryService {
 	return &DeliveryService{db: db}
 }
 
-// Enqueue validates the opaque envelope and persists it for the recipient.
-// The gateway never decrypts the envelope.
-//
-// The current repository contract does not define a sender-session protocol,
-// so this method only verifies that the sender device exists and is not
-// revoked. It does not claim cryptographic sender authentication.
+// Enqueue is the legacy relay operation. It verifies sender existence and
+// revocation, but does not authenticate the sender's HTTP request. New
+// per-device-authenticated routes must call EnqueueAuthenticated instead.
 func (s *DeliveryService) Enqueue(
 	ctx context.Context,
 	rawEnvelope []byte,
 	expiresAt time.Time,
+) (MessageEnvelopeV1, error) {
+	return s.enqueue(ctx, rawEnvelope, expiresAt, nil)
+}
+
+// EnqueueAuthenticated binds the envelope sender to the authenticated device
+// and revalidates the account/device lifecycle state under DB row locks in the
+// same transaction that persists the envelope.
+func (s *DeliveryService) EnqueueAuthenticated(
+	ctx context.Context,
+	rawEnvelope []byte,
+	expiresAt time.Time,
+	principal AuthenticatedDevice,
+) (MessageEnvelopeV1, error) {
+	return s.enqueue(ctx, rawEnvelope, expiresAt, &principal)
+}
+
+func (s *DeliveryService) enqueue(
+	ctx context.Context,
+	rawEnvelope []byte,
+	expiresAt time.Time,
+	principal *AuthenticatedDevice,
 ) (MessageEnvelopeV1, error) {
 	if s == nil || s.db == nil {
 		return MessageEnvelopeV1{}, errors.New("message delivery service is not initialized")
@@ -59,12 +100,21 @@ func (s *DeliveryService) Enqueue(
 	if err != nil {
 		return MessageEnvelopeV1{}, err
 	}
+	if principal != nil && envelope.SenderDeviceID != principal.DeviceID {
+		return MessageEnvelopeV1{}, ErrSenderIdentityMismatch
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return MessageEnvelopeV1{}, fmt.Errorf("begin message delivery transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	if principal != nil {
+		if err := lockAuthenticatedDeviceTx(ctx, tx, *principal); err != nil {
+			return MessageEnvelopeV1{}, err
+		}
+	}
 
 	var senderRevoked sql.NullTime
 	if err := tx.QueryRowContext(ctx, `
@@ -98,7 +148,7 @@ FOR SHARE
 	if recipientRevoked.Valid {
 		return MessageEnvelopeV1{}, ErrRecipientRevoked
 	}
-	if accountEpoch < 0 || accountEpoch > int64(^uint32(0)) || uint32(accountEpoch) != envelope.AccountEpoch {
+	if accountEpoch < 1 || accountEpoch > int64(^uint32(0)) || uint32(accountEpoch) != envelope.AccountEpoch {
 		return MessageEnvelopeV1{}, ErrRecipientEpochMismatch
 	}
 
@@ -133,21 +183,53 @@ func (s *DeliveryService) Fetch(ctx context.Context, recipientDeviceID [16]byte,
 	if s == nil || s.db == nil {
 		return nil, errors.New("message delivery service is not initialized")
 	}
+	return fetchEnvelopes(ctx, s.db, recipientDeviceID, limit)
+}
+
+// FetchAuthenticated holds the device/account lifecycle rows while it cleans
+// and reads the recipient queue. A concurrent revocation or epoch transition
+// cannot race the authenticated fetch.
+func (s *DeliveryService) FetchAuthenticated(
+	ctx context.Context,
+	principal AuthenticatedDevice,
+	limit int,
+) ([]StoredEnvelope, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("message delivery service is not initialized")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin authenticated message fetch: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := lockAuthenticatedDeviceTx(ctx, tx, principal); err != nil {
+		return nil, err
+	}
+	out, err := fetchEnvelopes(ctx, tx, principal.DeviceID, limit)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit authenticated message fetch: %w", err)
+	}
+	return out, nil
+}
+
+func fetchEnvelopes(ctx context.Context, q deliveryQueryer, recipientDeviceID [16]byte, limit int) ([]StoredEnvelope, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	if limit > 100 {
 		limit = 100
 	}
-
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := q.ExecContext(ctx, `
 DELETE FROM message_envelopes
 WHERE recipient_device=$1::uuid AND expires_at <= now()
 `, uuidText(recipientDeviceID)); err != nil {
 		return nil, fmt.Errorf("cleanup expired message envelopes: %w", err)
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := q.QueryContext(ctx, `
 SELECT uuid_send(me.envelope_id), me.envelope_cbor, me.created_at, me.expires_at
 FROM message_envelopes me
 LEFT JOIN delivery_acks da ON da.envelope_id = me.envelope_id
@@ -194,9 +276,39 @@ func (s *DeliveryService) Ack(ctx context.Context, recipientDeviceID [16]byte, e
 	if s == nil || s.db == nil {
 		return errors.New("message delivery service is not initialized")
 	}
+	return ackEnvelope(ctx, s.db, recipientDeviceID, envelopeID)
+}
 
+// AckAuthenticated revalidates and locks the authenticated recipient identity
+// in the same transaction that records the acknowledgement.
+func (s *DeliveryService) AckAuthenticated(
+	ctx context.Context,
+	principal AuthenticatedDevice,
+	envelopeID [16]byte,
+) error {
+	if s == nil || s.db == nil {
+		return errors.New("message delivery service is not initialized")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin authenticated message ack: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := lockAuthenticatedDeviceTx(ctx, tx, principal); err != nil {
+		return err
+	}
+	if err := ackEnvelope(ctx, tx, principal.DeviceID, envelopeID); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit authenticated message ack: %w", err)
+	}
+	return nil
+}
+
+func ackEnvelope(ctx context.Context, q deliveryQueryer, recipientDeviceID, envelopeID [16]byte) error {
 	var exists bool
-	if err := s.db.QueryRowContext(ctx, `
+	if err := q.QueryRowContext(ctx, `
 SELECT EXISTS (
 	SELECT 1
 	FROM message_envelopes
@@ -210,8 +322,7 @@ SELECT EXISTS (
 	if !exists {
 		return ErrEnvelopeNotFound
 	}
-
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := q.ExecContext(ctx, `
 INSERT INTO delivery_acks (envelope_id)
 VALUES ($1::uuid)
 ON CONFLICT (envelope_id) DO NOTHING
@@ -219,6 +330,113 @@ ON CONFLICT (envelope_id) DO NOTHING
 		return fmt.Errorf("ack message envelope: %w", err)
 	}
 	return nil
+}
+
+// lockAuthenticatedDeviceTx uses the same explicit lock order as
+// PostgresAuthorizer.Transition: accounts -> authorization_accounts ->
+// authorization_devices -> devices. Separate SELECTs make the acquisition
+// order independent of PostgreSQL's join plan.
+func lockAuthenticatedDeviceTx(ctx context.Context, tx *sql.Tx, principal AuthenticatedDevice) error {
+	if principal.AccountID == [16]byte{} || principal.DeviceID == [16]byte{} || principal.Epoch == 0 || principal.Epoch > uint64(^uint32(0)) {
+		return ErrAuthenticatedEpochMismatch
+	}
+
+	var accountEpoch int64
+	err := tx.QueryRowContext(ctx, `
+SELECT account_epoch
+FROM accounts
+WHERE account_id = $1::uuid
+FOR SHARE
+`, uuidText(principal.AccountID)).Scan(&accountEpoch)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrAuthenticatedDeviceNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("lock authenticated account row: %w", err)
+	}
+
+	var accountStatus int
+	var authorizationEpoch int64
+	err = tx.QueryRowContext(ctx, `
+SELECT status, epoch
+FROM authorization_accounts
+WHERE account_id = $1::uuid
+FOR SHARE
+`, uuidText(principal.AccountID)).Scan(&accountStatus, &authorizationEpoch)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrAuthenticatedDeviceNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("lock authenticated authorization account row: %w", err)
+	}
+
+	var deviceStatus int
+	var authorizedEpoch int64
+	var authorizationDSK, authorizationDDHK []byte
+	err = tx.QueryRowContext(ctx, `
+SELECT status, authorized_epoch, dsk_pub, ddhk_pub
+FROM authorization_devices
+WHERE account_id = $1::uuid AND device_id = $2::uuid
+FOR SHARE
+`, uuidText(principal.AccountID), uuidText(principal.DeviceID)).Scan(
+		&deviceStatus, &authorizedEpoch, &authorizationDSK, &authorizationDDHK,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrAuthenticatedDeviceNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("lock authenticated authorization device row: %w", err)
+	}
+
+	var deviceEpoch int64
+	var deviceDSK, deviceDDHK []byte
+	var revoked bool
+	err = tx.QueryRowContext(ctx, `
+SELECT account_epoch, dsk_pub, ddhk_pub, revoked_at IS NOT NULL
+FROM devices
+WHERE account_id = $1::uuid AND device_id = $2::uuid
+FOR SHARE
+`, uuidText(principal.AccountID), uuidText(principal.DeviceID)).Scan(
+		&deviceEpoch, &deviceDSK, &deviceDDHK, &revoked,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrAuthenticatedDeviceNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("lock authenticated device row: %w", err)
+	}
+
+	if accountStatus != int(authorization.AccountActive) {
+		return ErrAuthenticatedAccountInactive
+	}
+	if deviceStatus != int(authorization.DeviceActive) || revoked {
+		return ErrAuthenticatedDeviceInactive
+	}
+	if accountEpoch < 1 || accountEpoch > int64(^uint32(0)) ||
+		authorizationEpoch < 1 || authorizationEpoch > int64(^uint32(0)) ||
+		authorizedEpoch < 1 || authorizedEpoch > int64(^uint32(0)) ||
+		deviceEpoch < 1 || deviceEpoch > int64(^uint32(0)) ||
+		uint64(accountEpoch) != principal.Epoch || uint64(authorizationEpoch) != principal.Epoch ||
+		uint64(authorizedEpoch) != principal.Epoch || uint64(deviceEpoch) != principal.Epoch {
+		return ErrAuthenticatedEpochMismatch
+	}
+	if len(authorizationDSK) != 32 || len(deviceDSK) != 32 ||
+		len(authorizationDDHK) != 32 || len(deviceDDHK) != 32 ||
+		!equalBytes(authorizationDSK, deviceDSK) || !equalBytes(authorizationDDHK, deviceDDHK) {
+		return ErrAuthenticatedDeviceState
+	}
+	return nil
+}
+
+func equalBytes(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	var diff byte
+	for i := range a {
+		diff |= a[i] ^ b[i]
+	}
+	return diff == 0
 }
 
 func uuidText(id [16]byte) string {

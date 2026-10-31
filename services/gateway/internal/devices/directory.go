@@ -220,8 +220,8 @@ func (d *PostgresDirectory) ListSignedPrekeys(ctx context.Context, deviceID [16]
 }
 
 func decodeDevice(accountText, deviceText string, epoch int64, dsk, ddhk, push []byte, revoked bool, createdAt time.Time) (Device, error) {
-	if epoch < 1 {
-		return Device{}, errors.New("persisted device epoch must be >= 1")
+	if epoch < 1 || epoch > int64(^uint32(0)) {
+		return Device{}, errors.New("persisted device epoch is outside the V1 range")
 	}
 	if len(dsk) != 32 || len(ddhk) != 32 {
 		return Device{}, errors.New("invalid persisted device public key length")

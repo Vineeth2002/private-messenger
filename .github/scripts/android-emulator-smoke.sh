@@ -62,8 +62,14 @@ fi
 adb shell uiautomator dump /sdcard/pm-window.xml
 adb pull /sdcard/pm-window.xml pm-window.xml
 
-grep -Fq 'UniFFI CBOR: PASS' pm-window.xml
-grep -Fq 'Identity storage: CREATED_AND_PERSISTED' pm-window.xml
+grep -Fq 'UniFFI canonical CBOR: PASS' pm-window.xml
+if ! grep -Eq 'Identity storage: (CREATED_AND_PERSISTED|RESTORED)' pm-window.xml; then
+  echo "::error::Identity storage did not report a successful create or restore."
+  grep -o 'text="Identity storage: [^"]*"' pm-window.xml || true
+  adb logcat -d -t 500 || true
+  exit 1
+fi
+grep -o 'text="Identity storage: [^"]*"' pm-window.xml
 grep -Fq 'At-rest encryption: PASS' pm-window.xml
 
-echo "PASS: app launched, UniFFI CBOR passed, identity storage persisted, and at-rest encryption passed."
+echo "PASS: app launched; UniFFI canonical CBOR passed; identity storage create/restore passed; at-rest encryption passed."

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::cbor::CborError;
@@ -48,6 +48,11 @@ pub enum CryptoError {
     EntropyFailure,
 }
 
+struct EnrollmentBinding {
+    certificate_raw: Vec<u8>,
+    recovery_public_key: [u8; 32],
+}
+
 /// Opaque account handle.
 ///
 /// Private identity material remains inside Rust:
@@ -57,6 +62,8 @@ pub struct AccountContext {
     device_id: [u8; 16],
     dsk_seed: Zeroizing<[u8; 32]>,
     ddhk_seed: Zeroizing<[u8; 32]>,
+    // Transient enrollment binding; it is intentionally not part of the identity storage record.
+    enrollment_binding: Mutex<Option<EnrollmentBinding>>,
 }
 
 pub struct RecoveryContext {
@@ -71,6 +78,48 @@ impl RecoveryContext {
     pub fn recovery_commitment(&self) -> Vec<u8> {
         crate::authorization_v1::recovery_commitment(&self.recovery_key.verifying_key().to_bytes())
             .to_vec()
+    }
+    /// Create the recovery-signed enrollment certificate using identity values and public keys
+    /// derived from the opaque target device context, then bind that exact certificate to it.
+    /// The server remains responsible for validating the authoritative account epoch/state.
+    pub fn sign_device_enrollment_for_device(
+        &self,
+        device: Arc<AccountContext>,
+        epoch: u64,
+    ) -> Result<Vec<u8>, CryptoError> {
+        if epoch == 0 || epoch > u32::MAX as u64 {
+            return Err(CryptoError::InvalidField);
+        }
+        let dsk_public_key = SigningKey::from_bytes(&device.dsk_seed).verifying_key().to_bytes();
+        let ddhk_secret = StaticSecret::from(*device.ddhk_seed);
+        let ddhk_public_key = PublicKey::from(&ddhk_secret).to_bytes();
+        let certificate_raw = crate::authorization_v1::sign_device_enrollment(
+            &self.recovery_key,
+            device.account_id,
+            epoch,
+            device.device_id,
+            dsk_public_key,
+            ddhk_public_key,
+        )
+        .map_err(map_authorization_error)?;
+        let recovery_public_key = self.recovery_key.verifying_key().to_bytes();
+        let mut binding = device.enrollment_binding.lock().map_err(|_| CryptoError::InvalidField)?;
+        match binding.as_ref() {
+            Some(existing)
+                if existing.certificate_raw == certificate_raw
+                    && existing.recovery_public_key == recovery_public_key =>
+            {
+                Ok(existing.certificate_raw.clone())
+            }
+            Some(_) => Err(CryptoError::InvalidField),
+            None => {
+                *binding = Some(EnrollmentBinding {
+                    certificate_raw: certificate_raw.clone(),
+                    recovery_public_key,
+                });
+                Ok(certificate_raw)
+            }
+        }
     }
 
     pub fn sign_device_enrollment(
@@ -154,6 +203,75 @@ impl AccountContext {
     pub fn ddhk_public_key(&self) -> Vec<u8> {
         let secret = StaticSecret::from(*self.ddhk_seed);
         PublicKey::from(&secret).to_bytes().to_vec()
+    }
+
+    /// Sign a request using this device's DSK. The nonce and timestamp are
+    /// generated inside the native boundary; the private key never leaves Rust.
+    pub fn sign_device_http_request_v1(
+        &self,
+        epoch: u64,
+        method: String,
+        request_target: String,
+        body: Vec<u8>,
+    ) -> Result<Vec<u8>, CryptoError> {
+        if epoch == 0 || epoch > crate::device_request_auth_v1::MAX_EPOCH {
+            return Err(CryptoError::InvalidField);
+        }
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| CryptoError::EntropyFailure)?
+            .as_secs();
+        if timestamp == 0 {
+            return Err(CryptoError::EntropyFailure);
+        }
+        let mut rng = OsRng;
+        let mut nonce = [0u8; 32];
+        rng.try_fill_bytes(&mut nonce).map_err(|_| CryptoError::EntropyFailure)?;
+        let signing_key = SigningKey::from_bytes(&self.dsk_seed);
+        crate::device_request_auth_v1::sign_v1(
+            &signing_key,
+            &self.account_id,
+            &self.device_id,
+            epoch,
+            timestamp,
+            &nonce,
+            &method,
+            &request_target,
+            &body,
+        ).map_err(|_| CryptoError::InvalidField)
+    }
+    /// Sign PoP only for the exact recovery-authorized certificate this context signed through
+    /// RecoveryContext.sign_device_enrollment_for_device. The server must independently verify
+    /// challenge freshness and atomically consume the challenge during activation.
+    pub fn sign_device_enrollment_pop_for_challenge(
+        &self,
+        enrollment_certificate: Vec<u8>,
+        challenge_id: Vec<u8>,
+        challenge_nonce: Vec<u8>,
+    ) -> Result<Vec<u8>, CryptoError> {
+        let challenge_id = fixed::<16>(&challenge_id)?;
+        let challenge_nonce = fixed::<32>(&challenge_nonce)?;
+        let binding = self.enrollment_binding.lock().map_err(|_| CryptoError::InvalidField)?;
+        let binding = binding.as_ref().ok_or(CryptoError::InvalidField)?;
+        if binding.certificate_raw != enrollment_certificate {
+            return Err(CryptoError::InvalidField);
+        }
+
+        let signing_key = SigningKey::from_bytes(&self.dsk_seed);
+        let ddhk_secret = StaticSecret::from(*self.ddhk_seed);
+        let ddhk_public_key = PublicKey::from(&ddhk_secret).to_bytes();
+        crate::authorization_v1::sign_device_enrollment_pop_for_context(
+            &signing_key,
+            &binding.recovery_public_key,
+            &enrollment_certificate,
+            self.account_id,
+            self.device_id,
+            signing_key.verifying_key().to_bytes(),
+            ddhk_public_key,
+            challenge_id,
+            challenge_nonce,
+        )
+        .map_err(map_authorization_error)
     }
 
     pub fn sign_transparency_leaf(
@@ -304,6 +422,7 @@ impl AccountContext {
             device_id,
             dsk_seed,
             ddhk_seed,
+            enrollment_binding: Mutex::new(None),
         }))
     }
 }
@@ -337,6 +456,14 @@ fn uuid_v7(rng: &mut OsRng) -> Result<[u8; 16], CryptoError> {
     Ok(out)
 }
 
+/// Generate a recovery phrase from native OS entropy. Treat the returned phrase as a secret.
+pub fn recovery_mnemonic_generate() -> Result<String, CryptoError> {
+    crate::recovery::generate_recovery_mnemonic().map_err(|error| match error {
+        crate::recovery::RecoveryError::EntropyFailure => CryptoError::EntropyFailure,
+        _ => CryptoError::InvalidField,
+    })
+}
+
 /// Initialize an opaque recovery signing context from the recovery mnemonic.
 ///
 /// The derived Ed25519 recovery signing key remains inside Rust; only its
@@ -347,7 +474,35 @@ pub fn recovery_initialize(mnemonic: String) -> Result<Arc<RecoveryContext>, Cry
     Ok(Arc::new(RecoveryContext { recovery_key }))
 }
 
-pub fn identity_initialize() -> Result<Arc<AccountContext>, CryptoError> {
+
+/// Create a fresh device identity under an existing UUIDv7 account ID.
+/// DSK and DDHK seeds are generated and remain inside Rust; no key material crosses UniFFI.
+pub fn device_initialize_for_account(account_id: Vec<u8>) -> Result<Arc<AccountContext>, CryptoError> {
+    let account_id = fixed::<16>(&account_id)?;
+    if account_id == [0u8; 16] || account_id[6] >> 4 != 0x7 || account_id[8] >> 6 != 0b10 {
+        return Err(CryptoError::InvalidField);
+    }
+
+    let mut rng = OsRng;
+    let device_id = loop {
+        let candidate = uuid_v7(&mut rng)?;
+        if candidate != account_id {
+            break candidate;
+        }
+    };
+    let mut dsk_seed = Zeroizing::new([0u8; 32]);
+    rng.try_fill_bytes(&mut *dsk_seed).map_err(|_| CryptoError::EntropyFailure)?;
+    let mut ddhk_seed = Zeroizing::new([0u8; 32]);
+    rng.try_fill_bytes(&mut *ddhk_seed).map_err(|_| CryptoError::EntropyFailure)?;
+
+    Ok(Arc::new(AccountContext {
+        account_id,
+        device_id,
+        dsk_seed,
+        ddhk_seed,
+        enrollment_binding: Mutex::new(None),
+    }))
+}pub fn identity_initialize() -> Result<Arc<AccountContext>, CryptoError> {
     let mut rng = OsRng;
 
     let account_id = uuid_v7(&mut rng)?;
@@ -366,6 +521,7 @@ pub fn identity_initialize() -> Result<Arc<AccountContext>, CryptoError> {
         device_id,
         dsk_seed,
         ddhk_seed,
+        enrollment_binding: Mutex::new(None),
     }))
 }
 
@@ -589,5 +745,65 @@ mod tests {
             .sign_epoch_transition(account, 2, 3, 2, Vec::new())
             .unwrap();
         assert_eq!(reset[0], 0xa7);
+    }
+
+    #[test]
+    fn additional_device_enrollment_and_pop_are_bound_to_native_context() {
+        let existing = identity_initialize().unwrap();
+        let account_id = existing.account_id();
+        let device = device_initialize_for_account(account_id.clone()).unwrap();
+        assert_eq!(device.account_id(), account_id);
+        assert_ne!(device.device_id(), account_id);
+        assert_eq!(device.device_id()[6] >> 4, 0x7);
+        assert_eq!(device.device_id()[8] >> 6, 0b10);
+        assert!(device_initialize_for_account(vec![0u8; 16]).is_err());
+        assert!(device_initialize_for_account(vec![0x44u8; 16]).is_err(), "non-UUIDv7 account IDs must fail closed");
+
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art".to_owned();
+        let recovery = recovery_initialize(mnemonic).unwrap();
+        let recovery_public_key = fixed::<32>(&recovery.recovery_public_key()).unwrap();
+        let certificate = recovery.sign_device_enrollment_for_device(Arc::clone(&device), 2).unwrap();
+        let enrollment = crate::authorization_v1::DeviceEnrollmentAuthorizationV1::parse(&certificate).unwrap();
+        enrollment.verify(&recovery_public_key).unwrap();
+        assert_eq!(enrollment.account_id, fixed::<16>(&account_id).unwrap());
+        assert_eq!(enrollment.device_id, fixed::<16>(&device.device_id()).unwrap());
+        assert_eq!(enrollment.dsk_pub, fixed::<32>(&device.dsk_public_key()).unwrap());
+        assert_eq!(enrollment.ddhk_pub, fixed::<32>(&device.ddhk_public_key()).unwrap());
+
+        let challenge_id = vec![0x51; 16];
+        let challenge_nonce = vec![0x62; 32];
+        let proof_raw = device.sign_device_enrollment_pop_for_challenge(
+            certificate.clone(), challenge_id.clone(), challenge_nonce.clone(),
+        ).unwrap();
+        let proof = crate::authorization_v1::DeviceEnrollmentPoPV1::parse(&proof_raw).unwrap();
+        proof.verify_for_enrollment_and_challenge(
+            &recovery_public_key,
+            &certificate,
+            &fixed::<16>(&challenge_id).unwrap(),
+            &fixed::<32>(&challenge_nonce).unwrap(),
+        ).unwrap();
+
+        let mut changed_certificate = certificate.clone();
+        changed_certificate[0] ^= 0x01;
+        assert_eq!(
+            device.sign_device_enrollment_pop_for_challenge(
+                changed_certificate, challenge_id.clone(), challenge_nonce.clone(),
+            ).unwrap_err(),
+            CryptoError::InvalidField,
+        );
+        assert_eq!(
+            device.sign_device_enrollment_pop_for_challenge(
+                certificate.clone(), vec![0x51; 15], challenge_nonce.clone(),
+            ).unwrap_err(),
+            CryptoError::InvalidField,
+        );
+        assert!(device.sign_device_enrollment_pop_for_challenge(
+            certificate.clone(), vec![0u8; 16], challenge_nonce.clone(),
+        ).is_err(), "zero challenge ID must fail closed");
+        assert_eq!(
+            recovery.sign_device_enrollment_for_device(Arc::clone(&device), 3).unwrap_err(),
+            CryptoError::InvalidField,
+            "a native device context must not be rebound to a conflicting enrollment certificate",
+        );
     }
 }

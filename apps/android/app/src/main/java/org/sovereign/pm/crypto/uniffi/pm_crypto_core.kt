@@ -725,6 +725,16 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
+
+
+
+
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -758,6 +768,10 @@ internal interface UniffiLib : Library {
     ): RustBuffer.ByValue
     fun uniffi_pm_crypto_core_fn_method_accountcontext_seal_for_storage(`ptr`: Pointer,`storageKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_pm_crypto_core_fn_method_accountcontext_sign_device_enrollment_pop_for_challenge(`ptr`: Pointer,`enrollmentCertificate`: RustBuffer.ByValue,`challengeId`: RustBuffer.ByValue,`challengeNonce`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_pm_crypto_core_fn_method_accountcontext_sign_device_http_request_v1(`ptr`: Pointer,`epoch`: Long,`method`: RustBuffer.ByValue,`requestTarget`: RustBuffer.ByValue,`body`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     fun uniffi_pm_crypto_core_fn_method_accountcontext_sign_transparency_leaf(`ptr`: Pointer,`epoch`: Long,`certDh`: RustBuffer.ByValue,`spkPub`: RustBuffer.ByValue,`pushPk`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_pm_crypto_core_fn_clone_recoverycontext(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -770,16 +784,22 @@ internal interface UniffiLib : Library {
     ): RustBuffer.ByValue
     fun uniffi_pm_crypto_core_fn_method_recoverycontext_sign_device_enrollment(`ptr`: Pointer,`accountId`: RustBuffer.ByValue,`epoch`: Long,`deviceId`: RustBuffer.ByValue,`dskPub`: RustBuffer.ByValue,`ddhkPub`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_pm_crypto_core_fn_method_recoverycontext_sign_device_enrollment_for_device(`ptr`: Pointer,`device`: Pointer,`epoch`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     fun uniffi_pm_crypto_core_fn_method_recoverycontext_sign_epoch_transition(`ptr`: Pointer,`accountId`: RustBuffer.ByValue,`oldEpoch`: Long,`newEpoch`: Long,`action`: Long,`deviceId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_pm_crypto_core_fn_func_decode_strict_canonical(`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_pm_crypto_core_fn_func_device_initialize_for_account(`accountId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Pointer
     fun uniffi_pm_crypto_core_fn_func_identity_initialize(uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
     fun uniffi_pm_crypto_core_fn_func_identity_restore(`record`: RustBuffer.ByValue,`storageKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
     fun uniffi_pm_crypto_core_fn_func_recovery_initialize(`mnemonic`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
+    fun uniffi_pm_crypto_core_fn_func_recovery_mnemonic_generate(uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     fun ffi_pm_crypto_core_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun ffi_pm_crypto_core_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -894,11 +914,15 @@ internal interface UniffiLib : Library {
     ): Unit
     fun uniffi_pm_crypto_core_checksum_func_decode_strict_canonical(
     ): Short
+    fun uniffi_pm_crypto_core_checksum_func_device_initialize_for_account(
+    ): Short
     fun uniffi_pm_crypto_core_checksum_func_identity_initialize(
     ): Short
     fun uniffi_pm_crypto_core_checksum_func_identity_restore(
     ): Short
     fun uniffi_pm_crypto_core_checksum_func_recovery_initialize(
+    ): Short
+    fun uniffi_pm_crypto_core_checksum_func_recovery_mnemonic_generate(
     ): Short
     fun uniffi_pm_crypto_core_checksum_method_accountcontext_account_id(
     ): Short
@@ -910,6 +934,10 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_pm_crypto_core_checksum_method_accountcontext_seal_for_storage(
     ): Short
+    fun uniffi_pm_crypto_core_checksum_method_accountcontext_sign_device_enrollment_pop_for_challenge(
+    ): Short
+    fun uniffi_pm_crypto_core_checksum_method_accountcontext_sign_device_http_request_v1(
+    ): Short
     fun uniffi_pm_crypto_core_checksum_method_accountcontext_sign_transparency_leaf(
     ): Short
     fun uniffi_pm_crypto_core_checksum_method_recoverycontext_recovery_commitment(
@@ -917,6 +945,8 @@ internal interface UniffiLib : Library {
     fun uniffi_pm_crypto_core_checksum_method_recoverycontext_recovery_public_key(
     ): Short
     fun uniffi_pm_crypto_core_checksum_method_recoverycontext_sign_device_enrollment(
+    ): Short
+    fun uniffi_pm_crypto_core_checksum_method_recoverycontext_sign_device_enrollment_for_device(
     ): Short
     fun uniffi_pm_crypto_core_checksum_method_recoverycontext_sign_epoch_transition(
     ): Short
@@ -940,6 +970,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_pm_crypto_core_checksum_func_decode_strict_canonical() != 31610.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_pm_crypto_core_checksum_func_device_initialize_for_account() != 57940.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_pm_crypto_core_checksum_func_identity_initialize() != 17991.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -947,6 +980,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_pm_crypto_core_checksum_func_recovery_initialize() != 27628.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_pm_crypto_core_checksum_func_recovery_mnemonic_generate() != 64675.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_pm_crypto_core_checksum_method_accountcontext_account_id() != 7405.toShort()) {
@@ -964,6 +1000,12 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_pm_crypto_core_checksum_method_accountcontext_seal_for_storage() != 16763.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_pm_crypto_core_checksum_method_accountcontext_sign_device_enrollment_pop_for_challenge() != 4489.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_pm_crypto_core_checksum_method_accountcontext_sign_device_http_request_v1() != 9705.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_pm_crypto_core_checksum_method_accountcontext_sign_transparency_leaf() != 52060.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -974,6 +1016,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_pm_crypto_core_checksum_method_recoverycontext_sign_device_enrollment() != 50010.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_pm_crypto_core_checksum_method_recoverycontext_sign_device_enrollment_for_device() != 55586.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_pm_crypto_core_checksum_method_recoverycontext_sign_epoch_transition() != 52802.toShort()) {
@@ -1279,6 +1324,10 @@ public interface AccountContextInterface {
     
     fun `sealForStorage`(`storageKey`: kotlin.ByteArray): kotlin.ByteArray
     
+    fun `signDeviceEnrollmentPopForChallenge`(`enrollmentCertificate`: kotlin.ByteArray, `challengeId`: kotlin.ByteArray, `challengeNonce`: kotlin.ByteArray): kotlin.ByteArray
+    
+    fun `signDeviceHttpRequestV1`(`epoch`: kotlin.ULong, `method`: kotlin.String, `requestTarget`: kotlin.String, `body`: kotlin.ByteArray): kotlin.ByteArray
+    
     fun `signTransparencyLeaf`(`epoch`: kotlin.ULong, `certDh`: kotlin.ByteArray, `spkPub`: kotlin.ByteArray, `pushPk`: kotlin.ByteArray): kotlin.ByteArray
     
     companion object
@@ -1420,6 +1469,32 @@ open class AccountContext: Disposable, AutoCloseable, AccountContextInterface {
     uniffiRustCallWithError(CryptoException) { _status ->
     UniffiLib.INSTANCE.uniffi_pm_crypto_core_fn_method_accountcontext_seal_for_storage(
         it, FfiConverterByteArray.lower(`storageKey`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(CryptoException::class)override fun `signDeviceEnrollmentPopForChallenge`(`enrollmentCertificate`: kotlin.ByteArray, `challengeId`: kotlin.ByteArray, `challengeNonce`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithPointer {
+    uniffiRustCallWithError(CryptoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_pm_crypto_core_fn_method_accountcontext_sign_device_enrollment_pop_for_challenge(
+        it, FfiConverterByteArray.lower(`enrollmentCertificate`),FfiConverterByteArray.lower(`challengeId`),FfiConverterByteArray.lower(`challengeNonce`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(CryptoException::class)override fun `signDeviceHttpRequestV1`(`epoch`: kotlin.ULong, `method`: kotlin.String, `requestTarget`: kotlin.String, `body`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithPointer {
+    uniffiRustCallWithError(CryptoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_pm_crypto_core_fn_method_accountcontext_sign_device_http_request_v1(
+        it, FfiConverterULong.lower(`epoch`),FfiConverterString.lower(`method`),FfiConverterString.lower(`requestTarget`),FfiConverterByteArray.lower(`body`),_status)
 }
     }
     )
@@ -1579,6 +1654,8 @@ public interface RecoveryContextInterface {
     
     fun `signDeviceEnrollment`(`accountId`: kotlin.ByteArray, `epoch`: kotlin.ULong, `deviceId`: kotlin.ByteArray, `dskPub`: kotlin.ByteArray, `ddhkPub`: kotlin.ByteArray): kotlin.ByteArray
     
+    fun `signDeviceEnrollmentForDevice`(`device`: AccountContext, `epoch`: kotlin.ULong): kotlin.ByteArray
+    
     fun `signEpochTransition`(`accountId`: kotlin.ByteArray, `oldEpoch`: kotlin.ULong, `newEpoch`: kotlin.ULong, `action`: kotlin.ULong, `deviceId`: kotlin.ByteArray): kotlin.ByteArray
     
     companion object
@@ -1696,6 +1773,19 @@ open class RecoveryContext: Disposable, AutoCloseable, RecoveryContextInterface 
     uniffiRustCallWithError(CryptoException) { _status ->
     UniffiLib.INSTANCE.uniffi_pm_crypto_core_fn_method_recoverycontext_sign_device_enrollment(
         it, FfiConverterByteArray.lower(`accountId`),FfiConverterULong.lower(`epoch`),FfiConverterByteArray.lower(`deviceId`),FfiConverterByteArray.lower(`dskPub`),FfiConverterByteArray.lower(`ddhkPub`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(CryptoException::class)override fun `signDeviceEnrollmentForDevice`(`device`: AccountContext, `epoch`: kotlin.ULong): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithPointer {
+    uniffiRustCallWithError(CryptoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_pm_crypto_core_fn_method_recoverycontext_sign_device_enrollment_for_device(
+        it, FfiConverterTypeAccountContext.lower(`device`),FfiConverterULong.lower(`epoch`),_status)
 }
     }
     )
@@ -1866,6 +1956,16 @@ public object FfiConverterTypeCryptoError : FfiConverterRustBuffer<CryptoExcepti
     }
     
 
+    @Throws(CryptoException::class) fun `deviceInitializeForAccount`(`accountId`: kotlin.ByteArray): AccountContext {
+            return FfiConverterTypeAccountContext.lift(
+    uniffiRustCallWithError(CryptoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_pm_crypto_core_fn_func_device_initialize_for_account(
+        FfiConverterByteArray.lower(`accountId`),_status)
+}
+    )
+    }
+    
+
     @Throws(CryptoException::class) fun `identityInitialize`(): AccountContext {
             return FfiConverterTypeAccountContext.lift(
     uniffiRustCallWithError(CryptoException) { _status ->
@@ -1891,6 +1991,16 @@ public object FfiConverterTypeCryptoError : FfiConverterRustBuffer<CryptoExcepti
     uniffiRustCallWithError(CryptoException) { _status ->
     UniffiLib.INSTANCE.uniffi_pm_crypto_core_fn_func_recovery_initialize(
         FfiConverterString.lower(`mnemonic`),_status)
+}
+    )
+    }
+    
+
+    @Throws(CryptoException::class) fun `recoveryMnemonicGenerate`(): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(CryptoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_pm_crypto_core_fn_func_recovery_mnemonic_generate(
+        _status)
 }
     )
     }

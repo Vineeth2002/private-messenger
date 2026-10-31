@@ -290,7 +290,15 @@ files = sorted(f for f in os.listdir(OUT) if f.endswith(".json") and f != "manif
 status_of = {}
 for f in files:
     d = json.load(open(os.path.join(OUT, f), encoding="utf-8"))
-    status_of[f] = d.get("status") if d.get("status") in ("PLACEHOLDER_LOCKED", "PARTIAL") else "ACTIVE"
+    raw_status = d.get("status")
+    if raw_status is None:
+        status_of[f] = "ACTIVE"
+    elif raw_status == "candidate_not_frozen":
+        status_of[f] = "CANDIDATE_NOT_FROZEN"
+    elif raw_status in ("ACTIVE", "PLACEHOLDER_LOCKED", "PARTIAL"):
+        status_of[f] = raw_status
+    else:
+        raise ValueError(f"Unknown vector status {raw_status!r} in {f}")
 dump("manifest.json", {
     "manifest_format": 1,
     "files": [{"path": f, "status": status_of[f],

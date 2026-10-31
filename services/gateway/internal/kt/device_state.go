@@ -78,8 +78,8 @@ func (s *PostgresDeviceStateReader) DeviceState(ctx context.Context, accountID, 
 		return DeviceState{}, err
 	}
 
-	if epoch < 1 {
-		return DeviceState{}, errors.New("persisted device epoch must be >= 1")
+	if epoch < 1 || epoch > int64(^uint32(0)) {
+		return DeviceState{}, errors.New("persisted device epoch is outside the V1 range")
 	}
 	if len(dsk) != 32 || len(ddhk) != 32 {
 		return DeviceState{}, errors.New("invalid persisted device public key length")
@@ -119,7 +119,9 @@ func ValidateTransparencyLeafAgainstDevice(ctx context.Context, reader DeviceSta
 	if device.Revoked {
 		return ErrDeviceRevoked
 	}
-	if device.AccountID != leaf.AccountID ||
+	if leaf.Epoch == 0 || leaf.Epoch > uint64(^uint32(0)) ||
+		device.AccountEpoch == 0 || device.AccountEpoch > uint64(^uint32(0)) ||
+		device.AccountID != leaf.AccountID ||
 		device.DeviceID != leaf.DeviceID ||
 		device.AccountEpoch != leaf.Epoch ||
 		device.DSKPub != leaf.DSKPub ||

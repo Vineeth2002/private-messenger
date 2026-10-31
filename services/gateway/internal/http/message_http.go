@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/sovereign-messenger/private-messenger/services/gateway/internal/deviceauth"
 	"github.com/sovereign-messenger/private-messenger/services/gateway/internal/devices"
 	"github.com/sovereign-messenger/private-messenger/services/gateway/internal/messages"
 )
@@ -31,6 +33,16 @@ type MessageDelivery interface {
 	Enqueue(context.Context, []byte, time.Time) (messages.MessageEnvelopeV1, error)
 	Fetch(context.Context, [16]byte, int) ([]messages.StoredEnvelope, error)
 	Ack(context.Context, [16]byte, [16]byte) error
+}
+
+// AuthenticatedMessageDelivery rechecks the authenticated device's current
+// account/device lifecycle state in the same database transaction as each
+// message operation. The legacy methods remain for the explicitly demo-only
+// shared-bearer path.
+type AuthenticatedMessageDelivery interface {
+	EnqueueAuthenticated(context.Context, []byte, time.Time, messages.AuthenticatedDevice) (messages.MessageEnvelopeV1, error)
+	FetchAuthenticated(context.Context, messages.AuthenticatedDevice, int) ([]messages.StoredEnvelope, error)
+	AckAuthenticated(context.Context, messages.AuthenticatedDevice, [16]byte) error
 }
 
 // NewHandlerWithSTHAndDevicesAndMessages adds the live demo message relay to
@@ -54,7 +66,7 @@ func NewHandlerWithSTHAndDevicesAndMessages(
 			writeMessageError(w, http.StatusTooManyRequests, "ERR_RATE_LIMITED")
 			return
 		}
-		if authToken != "" && !validBearer(r.Header.Get("Authorization"), authToken) {
+		if authToken == "" || !validBearer(r.Header.Get("Authorization"), authToken) {
 			writeMessageError(w, http.StatusUnauthorized, "ERR_UNAUTHORIZED")
 			return
 		}
@@ -62,7 +74,38 @@ func NewHandlerWithSTHAndDevicesAndMessages(
 	})
 }
 
+// NewHandlerWithSTHAndDevicesAndMessagesAndDeviceAuth enables the same demo
+// relay behind per-device request authentication. Unlike the shared-bearer
+// constructor, this path binds send/fetch/ack operations to the authenticated
+// device identity and requires persistent nonce consumption.
+func NewHandlerWithSTHAndDevicesAndMessagesAndDeviceAuth(
+	sthSource STHSource,
+	directory devices.Directory,
+	delivery MessageDelivery,
+	authenticator DeviceRequestAuthenticator,
+) http.Handler {
+	base := NewHandlerWithSTHAndDevices(sthSource, directory)
+	limiter := newDemoMessageLimiter(demoMessageRate, demoMessageWindow)
+	messageHandler := deviceRequestAuthMiddleware(authenticator, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		serveDemoMessages(w, r, delivery)
+	}))
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, demoMessagePrefix) {
+			base.ServeHTTP(w, r)
+			return
+		}
+		if !limiter.Allow(remoteKey(r)) {
+			w.Header().Set("Retry-After", "60")
+			writeMessageError(w, http.StatusTooManyRequests, "ERR_RATE_LIMITED")
+			return
+		}
+		messageHandler.ServeHTTP(w, r)
+	})
+}
+
 func serveDemoMessages(w http.ResponseWriter, r *http.Request, delivery MessageDelivery) {
+	principal, deviceAuthenticated := devicePrincipalFromContext(r.Context())
 	if delivery == nil {
 		writeMessageError(w, http.StatusServiceUnavailable, "ERR_MESSAGE_DELIVERY_UNAVAILABLE")
 		return
@@ -75,7 +118,7 @@ func serveDemoMessages(w http.ResponseWriter, r *http.Request, delivery MessageD
 			writeMessageError(w, http.StatusMethodNotAllowed, "ERR_METHOD_NOT_ALLOWED")
 			return
 		}
-		serveDemoMessageSend(w, r, delivery)
+		serveDemoMessageSend(w, r, delivery, principal, deviceAuthenticated)
 		return
 
 	case len(parts) == 4 && parts[0] == "v1" && parts[1] == "demo" && parts[2] == "messages":
@@ -88,7 +131,7 @@ func serveDemoMessages(w http.ResponseWriter, r *http.Request, delivery MessageD
 			writeMessageError(w, http.StatusBadRequest, "ERR_INVALID_DEVICE_ID")
 			return
 		}
-		serveDemoMessageFetch(w, r, delivery, deviceID)
+		serveDemoMessageFetch(w, r, delivery, deviceID, principal, deviceAuthenticated)
 		return
 
 	case len(parts) == 6 && parts[0] == "v1" && parts[1] == "demo" && parts[2] == "messages" && parts[5] == "ack":
@@ -106,14 +149,14 @@ func serveDemoMessages(w http.ResponseWriter, r *http.Request, delivery MessageD
 			writeMessageError(w, http.StatusBadRequest, "ERR_INVALID_ENVELOPE_ID")
 			return
 		}
-		serveDemoMessageAck(w, r, delivery, deviceID, envelopeID)
+		serveDemoMessageAck(w, r, delivery, deviceID, envelopeID, principal, deviceAuthenticated)
 		return
 	}
 
 	writeMessageError(w, http.StatusNotFound, "ERR_MESSAGE_ROUTE_NOT_FOUND")
 }
 
-func serveDemoMessageSend(w http.ResponseWriter, r *http.Request, delivery MessageDelivery) {
+func serveDemoMessageSend(w http.ResponseWriter, r *http.Request, delivery MessageDelivery, principal deviceauth.Principal, deviceAuthenticated bool) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxBodyBytes))
 	if err != nil {
 		writeMessageError(w, http.StatusRequestEntityTooLarge, "ERR_BODY_TOO_LARGE")
@@ -122,6 +165,17 @@ func serveDemoMessageSend(w http.ResponseWriter, r *http.Request, delivery Messa
 	if len(body) == 0 {
 		writeMessageError(w, http.StatusBadRequest, "ERR_EMPTY_MESSAGE_ENVELOPE")
 		return
+	}
+	if deviceAuthenticated {
+		parsedEnvelope, err := messages.DecodeMessageEnvelopeV1(body)
+		if err != nil {
+			writeMessageError(w, http.StatusBadRequest, "ERR_INVALID_MESSAGE_ENVELOPE")
+			return
+		}
+		if parsedEnvelope.SenderDeviceID != principal.DeviceID {
+			writeMessageError(w, http.StatusForbidden, "ERR_SENDER_DEVICE_IDENTITY_MISMATCH")
+			return
+		}
 	}
 
 	expiresAt := time.Now().UTC().Add(demoMessageTTL)
@@ -138,13 +192,33 @@ func serveDemoMessageSend(w http.ResponseWriter, r *http.Request, delivery Messa
 		return
 	}
 
-	envelope, err := delivery.Enqueue(r.Context(), body, expiresAt)
+	var envelope messages.MessageEnvelopeV1
+	if deviceAuthenticated {
+		authenticatedDelivery, ok := delivery.(AuthenticatedMessageDelivery)
+		if !ok {
+			writeMessageError(w, http.StatusServiceUnavailable, "ERR_AUTHENTICATED_DELIVERY_UNAVAILABLE")
+			return
+		}
+		envelope, err = authenticatedDelivery.EnqueueAuthenticated(
+			r.Context(), body, expiresAt, authenticatedMessageDevice(principal),
+		)
+	} else {
+		envelope, err = delivery.Enqueue(r.Context(), body, expiresAt)
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, messages.ErrSenderNotFound), errors.Is(err, messages.ErrRecipientNotFound):
 			writeMessageError(w, http.StatusNotFound, messageErrorCode(err))
-		case errors.Is(err, messages.ErrSenderRevoked), errors.Is(err, messages.ErrRecipientRevoked):
-			writeMessageError(w, http.StatusForbidden, messageErrorCode(err))
+		case errors.Is(err, messages.ErrSenderRevoked), errors.Is(err, messages.ErrRecipientRevoked),
+			errors.Is(err, messages.ErrAuthenticatedAccountInactive), errors.Is(err, messages.ErrAuthenticatedDeviceInactive),
+			errors.Is(err, messages.ErrAuthenticatedDeviceNotFound):
+			writeMessageError(w, http.StatusForbidden, "ERR_DEVICE_NOT_AUTHORIZED")
+		case errors.Is(err, messages.ErrAuthenticatedEpochMismatch):
+			writeMessageError(w, http.StatusConflict, "ERR_DEVICE_EPOCH_MISMATCH")
+		case errors.Is(err, messages.ErrAuthenticatedDeviceState):
+			writeMessageError(w, http.StatusServiceUnavailable, "ERR_DEVICE_STATE_UNAVAILABLE")
+		case errors.Is(err, messages.ErrSenderIdentityMismatch):
+			writeMessageError(w, http.StatusForbidden, "ERR_SENDER_DEVICE_IDENTITY_MISMATCH")
 		case errors.Is(err, messages.ErrRecipientEpochMismatch):
 			writeMessageError(w, http.StatusConflict, "ERR_RECIPIENT_EPOCH_MISMATCH")
 		case errors.Is(err, messages.ErrInvalidMessageEnvelope), errors.Is(err, messages.ErrInvalidMessageEnvelopeField), errors.Is(err, messages.ErrNonCanonicalMessageEnvelope):
@@ -164,7 +238,11 @@ func serveDemoMessageSend(w http.ResponseWriter, r *http.Request, delivery Messa
 	})
 }
 
-func serveDemoMessageFetch(w http.ResponseWriter, r *http.Request, delivery MessageDelivery, deviceID [16]byte) {
+func serveDemoMessageFetch(w http.ResponseWriter, r *http.Request, delivery MessageDelivery, deviceID [16]byte, principal deviceauth.Principal, deviceAuthenticated bool) {
+	if deviceAuthenticated && deviceID != principal.DeviceID {
+		writeMessageError(w, http.StatusForbidden, "ERR_DEVICE_IDENTITY_MISMATCH")
+		return
+	}
 	limit := 50
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		n, err := strconv.Atoi(raw)
@@ -175,9 +253,20 @@ func serveDemoMessageFetch(w http.ResponseWriter, r *http.Request, delivery Mess
 		limit = n
 	}
 
-	envelopes, err := delivery.Fetch(r.Context(), deviceID, limit)
+	var envelopes []messages.StoredEnvelope
+	var err error
+	if deviceAuthenticated {
+		authenticatedDelivery, ok := delivery.(AuthenticatedMessageDelivery)
+		if !ok {
+			writeMessageError(w, http.StatusServiceUnavailable, "ERR_AUTHENTICATED_DELIVERY_UNAVAILABLE")
+			return
+		}
+		envelopes, err = authenticatedDelivery.FetchAuthenticated(r.Context(), authenticatedMessageDevice(principal), limit)
+	} else {
+		envelopes, err = delivery.Fetch(r.Context(), deviceID, limit)
+	}
 	if err != nil {
-		writeMessageError(w, http.StatusInternalServerError, "ERR_MESSAGE_FETCH")
+		writeAuthenticatedDeliveryError(w, err, "ERR_MESSAGE_FETCH")
 		return
 	}
 
@@ -202,16 +291,54 @@ func serveDemoMessageFetch(w http.ResponseWriter, r *http.Request, delivery Mess
 	_ = json.NewEncoder(w).Encode(map[string]any{"messages": out})
 }
 
-func serveDemoMessageAck(w http.ResponseWriter, r *http.Request, delivery MessageDelivery, deviceID, envelopeID [16]byte) {
-	if err := delivery.Ack(r.Context(), deviceID, envelopeID); err != nil {
+func serveDemoMessageAck(w http.ResponseWriter, r *http.Request, delivery MessageDelivery, deviceID, envelopeID [16]byte, principal deviceauth.Principal, deviceAuthenticated bool) {
+	if deviceAuthenticated && deviceID != principal.DeviceID {
+		writeMessageError(w, http.StatusForbidden, "ERR_DEVICE_IDENTITY_MISMATCH")
+		return
+	}
+	var err error
+	if deviceAuthenticated {
+		authenticatedDelivery, ok := delivery.(AuthenticatedMessageDelivery)
+		if !ok {
+			writeMessageError(w, http.StatusServiceUnavailable, "ERR_AUTHENTICATED_DELIVERY_UNAVAILABLE")
+			return
+		}
+		err = authenticatedDelivery.AckAuthenticated(r.Context(), authenticatedMessageDevice(principal), envelopeID)
+	} else {
+		err = delivery.Ack(r.Context(), deviceID, envelopeID)
+	}
+	if err != nil {
 		if errors.Is(err, messages.ErrEnvelopeNotFound) {
 			writeMessageError(w, http.StatusNotFound, "ERR_MESSAGE_NOT_FOUND")
 			return
 		}
-		writeMessageError(w, http.StatusInternalServerError, "ERR_MESSAGE_ACK")
+		writeAuthenticatedDeliveryError(w, err, "ERR_MESSAGE_ACK")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func authenticatedMessageDevice(principal deviceauth.Principal) messages.AuthenticatedDevice {
+	return messages.AuthenticatedDevice{
+		AccountID: principal.AccountID,
+		DeviceID:  principal.DeviceID,
+		Epoch:     principal.Epoch,
+	}
+}
+
+func writeAuthenticatedDeliveryError(w http.ResponseWriter, err error, fallback string) {
+	switch {
+	case errors.Is(err, messages.ErrAuthenticatedAccountInactive),
+		errors.Is(err, messages.ErrAuthenticatedDeviceInactive),
+		errors.Is(err, messages.ErrAuthenticatedDeviceNotFound):
+		writeMessageError(w, http.StatusForbidden, "ERR_DEVICE_NOT_AUTHORIZED")
+	case errors.Is(err, messages.ErrAuthenticatedEpochMismatch):
+		writeMessageError(w, http.StatusConflict, "ERR_DEVICE_EPOCH_MISMATCH")
+	case errors.Is(err, messages.ErrAuthenticatedDeviceState):
+		writeMessageError(w, http.StatusServiceUnavailable, "ERR_DEVICE_STATE_UNAVAILABLE")
+	default:
+		writeMessageError(w, http.StatusInternalServerError, fallback)
+	}
 }
 
 func messageErrorCode(err error) string {
@@ -241,18 +368,34 @@ func validBearer(header, expected string) bool {
 }
 
 func remoteKey(r *http.Request) string {
-	return r.RemoteAddr
+	// RemoteAddr is supplied by the HTTP server. Do not trust client-controlled
+	// forwarding headers here, and do not include the ephemeral source port.
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err != nil {
+		return "unknown"
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return "unknown"
+	}
+	if ipv4 := ip.To4(); ipv4 != nil {
+		return ipv4.String()
+	}
+	return ip.String()
 }
 
 func envelopeIDString(id [16]byte) string {
 	return messages.UUIDText(id)
 }
 
+const demoMessageLimiterMaxEntries = 4096
+
 type demoMessageLimiter struct {
-	mu      sync.Mutex
-	limit   int
-	window  time.Duration
-	entries map[string]demoLimitEntry
+	mu        sync.Mutex
+	limit     int
+	window    time.Duration
+	entries   map[string]demoLimitEntry
+	lastSweep time.Time
 }
 
 type demoLimitEntry struct {
@@ -273,7 +416,35 @@ func (l *demoMessageLimiter) Allow(key string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	entry := l.entries[key]
+	// Bound memory if many distinct peers appear. Sweep periodically rather than
+	// scanning the whole map for every new peer while at capacity.
+	sweepInterval := l.window / 4
+	if sweepInterval <= 0 {
+		sweepInterval = time.Second
+	}
+	if sweepInterval > 15*time.Second {
+		sweepInterval = 15 * time.Second
+	}
+	if l.lastSweep.IsZero() || now.Sub(l.lastSweep) >= sweepInterval {
+		for candidate, candidateEntry := range l.entries {
+			if candidateEntry.started.IsZero() || now.Sub(candidateEntry.started) >= l.window {
+				delete(l.entries, candidate)
+			}
+		}
+		l.lastSweep = now
+	}
+
+	if l.entries == nil {
+		l.entries = make(map[string]demoLimitEntry)
+	}
+	entry, exists := l.entries[key]
+	if !exists {
+		if len(l.entries) >= demoMessageLimiterMaxEntries {
+			return false
+		}
+		l.entries[key] = demoLimitEntry{started: now, count: 1}
+		return true
+	}
 	if entry.started.IsZero() || now.Sub(entry.started) >= l.window {
 		l.entries[key] = demoLimitEntry{started: now, count: 1}
 		return true

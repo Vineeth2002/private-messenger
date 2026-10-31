@@ -65,6 +65,21 @@ jobs:
           test -s ../../apps/android/app/src/main/jniLibs/arm64-v8a/libpm_crypto_core.so
           test -s ../../apps/android/app/src/main/jniLibs/x86_64/libpm_crypto_core.so
 
+      - name: Create ephemeral CI-only debug gateway CA resource
+        shell: bash
+        run: |
+          set -euo pipefail
+          CA_DIR="apps/android/app/src/debug/res/raw"
+          mkdir -p "$CA_DIR"
+          openssl req -x509 -newkey rsa:2048 -sha256 -days 1 -nodes \
+            -keyout "$RUNNER_TEMP/dev_gateway_ca.key" \
+            -out "$CA_DIR/dev_gateway_ca.pem" \
+            -subj "/CN=PM CI Debug Gateway CA" \
+            -addext "basicConstraints=critical,CA:TRUE" \
+            -addext "keyUsage=critical,keyCertSign,cRLSign"
+          rm -f "$RUNNER_TEMP/dev_gateway_ca.key"
+          test -s "$CA_DIR/dev_gateway_ca.pem"
+          openssl x509 -in "$CA_DIR/dev_gateway_ca.pem" -noout -subject
       - name: Run Android unit tests and assemble debug APK
         working-directory: apps/android
         run: bash gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug

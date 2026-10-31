@@ -31,8 +31,9 @@ func (f *fakeMessageDelivery) Ack(ctx context.Context, deviceID, envelopeID [16]
 }
 
 func TestDemoMessageRoutesRequireDelivery(t *testing.T) {
-	h := NewHandlerWithSTHAndDevicesAndMessages(nil, nil, nil, "")
+	h := NewHandlerWithSTHAndDevicesAndMessages(nil, nil, nil, "demo-token")
 	req := httptest.NewRequest(http.MethodPost, "/v1/demo/messages", strings.NewReader("x"))
+	req.Header.Set("Authorization", "Bearer demo-token")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusServiceUnavailable {
@@ -68,8 +69,9 @@ func TestDemoMessageSendUsesDelivery(t *testing.T) {
 		fetchFn: func(context.Context, [16]byte, int) ([]messages.StoredEnvelope, error) { return nil, nil },
 		ackFn:   func(context.Context, [16]byte, [16]byte) error { return nil },
 	}
-	h := NewHandlerWithSTHAndDevicesAndMessages(nil, nil, fake, "")
+	h := NewHandlerWithSTHAndDevicesAndMessages(nil, nil, fake, "demo-token")
 	req := httptest.NewRequest(http.MethodPost, "/v1/demo/messages", strings.NewReader("opaque-envelope"))
+	req.Header.Set("Authorization", "Bearer demo-token")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusAccepted {
@@ -95,8 +97,9 @@ func TestDemoMessageAckUsesDelivery(t *testing.T) {
 			return nil
 		},
 	}
-	h := NewHandlerWithSTHAndDevicesAndMessages(nil, nil, fake, "")
+	h := NewHandlerWithSTHAndDevicesAndMessages(nil, nil, fake, "demo-token")
 	req := httptest.NewRequest(http.MethodPost, "/v1/demo/messages/01000000-0000-0000-0000-000000000000/02000000-0000-0000-0000-000000000000/ack", nil)
+	req.Header.Set("Authorization", "Bearer demo-token")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusNoContent {
@@ -125,14 +128,38 @@ func TestDemoMessageFetchUsesDelivery(t *testing.T) {
 		},
 		ackFn: func(context.Context, [16]byte, [16]byte) error { return nil },
 	}
-	h := NewHandlerWithSTHAndDevicesAndMessages(nil, nil, fake, "")
+	h := NewHandlerWithSTHAndDevicesAndMessages(nil, nil, fake, "demo-token")
 	req := httptest.NewRequest(http.MethodGet, "/v1/demo/messages/01000000-0000-0000-0000-000000000000", nil)
+	req.Header.Set("Authorization", "Bearer demo-token")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
-		t.Fatalf("status=%d, want %d; body=%s", rr.Code, rr.Code, rr.Body.String())
+		t.Fatalf("status=%d, want %d; body=%s", rr.Code, http.StatusOK, rr.Body.String())
 	}
 	if !called || gotDevice[0] != 1 {
 		t.Fatal("delivery Fetch was not called with expected device")
+	}
+}
+
+func TestDemoMessageRoutesRejectEmptyBearerConfiguration(t *testing.T) {
+	h := NewHandlerWithSTHAndDevicesAndMessages(
+		nil,
+		nil,
+		&fakeMessageDelivery{},
+		"",
+	)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/v1/demo/messages/00112233-4455-6677-8899-aabbccddeeff",
+		nil,
+	)
+	req.Header.Set("Authorization", "Bearer demo-token")
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d, want %d", rr.Code, http.StatusUnauthorized)
 	}
 }

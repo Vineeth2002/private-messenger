@@ -1,7 +1,9 @@
 package authorization
 
 import (
+	"context"
 	"crypto/ed25519"
+	"database/sql"
 	"testing"
 
 	"github.com/sovereign-messenger/private-messenger/services/gateway/internal/cbor"
@@ -151,11 +153,87 @@ func TestTransitionExactReplayRemainsIdempotentAfterEpochAdvance(t *testing.T) {
 	if err := a.Revoke(revoke, pubArr); err != nil {
 		t.Fatalf("exact replay after epoch advance must be idempotent: %v", err)
 	}
-	reset := testTransitionCert(t, priv, account, [16]byte{}, 2, 3, RecoveryResetAction)
-	if err := a.RecoveryReset(reset, pubArr); err != nil {
+}
+
+func TestLegacyRecoveryResetActionIsRejectedWithoutStateMutation(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.RecoveryReset(reset, pubArr); err != nil {
-		t.Fatalf("exact recovery-reset replay after epoch advance must be idempotent: %v", err)
+	var account, target, survivor [16]byte
+	account[15], target[15], survivor[15] = 20, 21, 22
+	var pubArr, dsk1, ddhk1, dsk2, ddhk2 [32]byte
+	copy(pubArr[:], pub)
+	dsk1[0], ddhk1[0], dsk2[0], ddhk2[0] = 1, 2, 3, 4
+
+	mem := NewAuthorizer()
+	if err := mem.EnsureAccount(account, 1, RecoveryCommitment(pubArr), pubArr); err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.Enroll(testEnrollmentCert(t, priv, account, target, 1, dsk1, ddhk1), pubArr); err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.Enroll(testEnrollmentCert(t, priv, account, survivor, 1, dsk2, ddhk2), pubArr); err != nil {
+		t.Fatal(err)
+	}
+
+	reset := testTransitionCert(t, priv, account, [16]byte{}, 1, 2, RecoveryResetAction)
+	if err := mem.RecoveryReset(reset, pubArr); err != ErrInvalidAuthorization {
+		t.Fatalf("in-memory legacy recovery reset error = %v, want %v", err, ErrInvalidAuthorization)
+	}
+	gotAccount, ok := mem.Account(account)
+	if !ok || gotAccount.Epoch != 1 || gotAccount.Status != AccountActive {
+		t.Fatalf("legacy recovery reset mutated account: %+v (exists=%v)", gotAccount, ok)
+	}
+	for _, deviceID := range [][16]byte{target, survivor} {
+		gotDevice, ok := mem.Device(account, deviceID)
+		if !ok || gotDevice.Status != DeviceActive || gotDevice.AuthorizedEpoch != 1 {
+			t.Fatalf("legacy recovery reset mutated device %x: %+v (exists=%v)", deviceID, gotDevice, ok)
+		}
+	}
+
+	// The PostgreSQL implementation must reject this action before opening a
+	// transaction. A zero-value sql.DB detects accidental DB access: that would
+	// return a database error instead of ErrInvalidAuthorization.
+	pg := NewPostgresAuthorizer(&sql.DB{})
+	if err := pg.Transition(context.Background(), reset, pubArr); err != ErrInvalidAuthorization {
+		t.Fatalf("PostgreSQL legacy recovery reset error = %v, want %v", err, ErrInvalidAuthorization)
+	}
+}
+
+func TestInMemoryEnrollmentCannotUnlockRecoveryLockedAccount(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var accountID, deviceID [16]byte
+	accountID[15] = 41
+	deviceID[15] = 42
+	var recoveryPub [32]byte
+	copy(recoveryPub[:], publicKey)
+	var dsk, ddhk [32]byte
+	dsk[0], ddhk[0] = 0x31, 0x32
+
+	a := NewAuthorizer()
+	a.accounts[accountID] = Account{
+		ID:                 accountID,
+		Epoch:              1,
+		RecoveryCommitment: RecoveryCommitment(recoveryPub),
+		RecoveryPub:        recoveryPub,
+		Status:             AccountRecoveryLocked,
+	}
+	cert := testEnrollmentCert(t, privateKey, accountID, deviceID, 1, dsk, ddhk)
+	if err := a.Enroll(cert, recoveryPub); err != ErrAccountLocked {
+		t.Fatalf("enrollment into recovery-locked account error = %v, want %v", err, ErrAccountLocked)
+	}
+	gotAccount, ok := a.Account(accountID)
+	if !ok || gotAccount.Status != AccountRecoveryLocked || gotAccount.Epoch != 1 {
+		t.Fatalf("ordinary enrollment changed recovery-locked account: %+v (exists=%v)", gotAccount, ok)
+	}
+	if _, ok := a.Device(accountID, deviceID); ok {
+		t.Fatal("ordinary enrollment created a device in a recovery-locked account")
+	}
+	if len(a.enrollmentByDigest) != 0 {
+		t.Fatalf("ordinary enrollment recorded %d enrollment digests for rejected recovery-locked account", len(a.enrollmentByDigest))
 	}
 }

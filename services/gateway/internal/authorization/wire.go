@@ -29,7 +29,10 @@ type DeviceEnrollmentAuthorizationV1 struct {
 type EpochTransitionAction uint64
 
 const (
-	RevokeDeviceAction  EpochTransitionAction = 1
+	RevokeDeviceAction EpochTransitionAction = 1
+	// RecoveryResetAction is retained only so legacy signed V1 messages remain
+	// decodable. State-mutating APIs must reject it; delayed recovery uses the
+	// separate RecoveryRequestV1 protocol.
 	RecoveryResetAction EpochTransitionAction = 2
 )
 
@@ -60,7 +63,8 @@ func (a DeviceEnrollmentAuthorizationV1) Digest() [32]byte { return sha256.Sum25
 func (a EpochTransitionAuthorizationV1) Digest() [32]byte  { return sha256.Sum256(a.Raw) }
 
 func (a DeviceEnrollmentAuthorizationV1) Verify(recoveryPub [32]byte) error {
-	if len(a.Raw) == 0 || a.AccountID == [16]byte{} || a.DeviceID == [16]byte{} || a.Epoch == 0 {
+	if len(a.Raw) == 0 || a.AccountID == [16]byte{} || a.DeviceID == [16]byte{} ||
+		a.Epoch == 0 || a.Epoch > LifecycleWireV1MaxEpoch {
 		return ErrInvalidAuthorization
 	}
 	core, err := a.canonicalCore()
@@ -78,7 +82,9 @@ func (a EpochTransitionAuthorizationV1) Verify(recoveryPub [32]byte) error {
 	if len(a.Raw) == 0 || a.AccountID == [16]byte{} || a.OldEpoch == 0 || a.NewEpoch == 0 {
 		return ErrInvalidAuthorization
 	}
-	if a.NewEpoch != a.OldEpoch+1 {
+	if a.OldEpoch >= LifecycleWireV1MaxEpoch ||
+		a.NewEpoch > LifecycleWireV1MaxEpoch ||
+		a.NewEpoch != a.OldEpoch+1 {
 		return ErrInvalidEpoch
 	}
 	switch a.Action {
@@ -170,7 +176,8 @@ func ParseDeviceEnrollmentAuthorizationV1(raw []byte) (DeviceEnrollmentAuthoriza
 	if err != nil {
 		return DeviceEnrollmentAuthorizationV1{}, err
 	}
-	if epoch == 0 || accountID == [16]byte{} || deviceID == [16]byte{} {
+	if epoch == 0 || epoch > LifecycleWireV1MaxEpoch ||
+		accountID == [16]byte{} || deviceID == [16]byte{} {
 		return DeviceEnrollmentAuthorizationV1{}, ErrInvalidAuthorization
 	}
 	return DeviceEnrollmentAuthorizationV1{Raw: append([]byte(nil), raw...), AccountID: accountID, Epoch: epoch, DeviceID: deviceID, DSKPub: dskPub, DDHKPub: ddhkPub, Signature: sig}, nil
@@ -215,7 +222,9 @@ func ParseEpochTransitionAuthorizationV1(raw []byte) (EpochTransitionAuthorizati
 	if err != nil {
 		return EpochTransitionAuthorizationV1{}, err
 	}
-	if oldEpoch == 0 || newEpoch != oldEpoch+1 || accountID == [16]byte{} {
+	if oldEpoch == 0 || oldEpoch >= LifecycleWireV1MaxEpoch ||
+		newEpoch > LifecycleWireV1MaxEpoch || newEpoch != oldEpoch+1 ||
+		accountID == [16]byte{} {
 		return EpochTransitionAuthorizationV1{}, ErrInvalidEpoch
 	}
 	var deviceID [16]byte
