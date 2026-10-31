@@ -71,7 +71,8 @@ func (a *Authorizer) EnsureAccount(accountID [16]byte, epoch uint64, commitment,
 	if a == nil {
 		return ErrNilAuthorizer
 	}
-	if accountID == [16]byte{} || epoch == 0 || !VerifyRecoveryCommitment(commitment, recoveryPub) {
+	if accountID == [16]byte{} || epoch == 0 || epoch > LifecycleWireV1MaxEpoch ||
+		!VerifyRecoveryCommitment(commitment, recoveryPub) {
 		return ErrInvalidAuthorization
 	}
 	a.mu.Lock()
@@ -125,6 +126,9 @@ func (a *Authorizer) Enroll(cert DeviceEnrollmentAuthorizationV1, recoveryPub [3
 	if _, ok := a.enrollmentByDigest[digest]; ok {
 		return nil
 	}
+	if account.Status != AccountActive {
+		return ErrAccountLocked
+	}
 	if account.Epoch != cert.Epoch {
 		return ErrInvalidEpoch
 	}
@@ -136,28 +140,32 @@ func (a *Authorizer) Enroll(cert DeviceEnrollmentAuthorizationV1, recoveryPub [3
 		return ErrDeviceExists
 	}
 	a.devices[key] = Device{AccountID: cert.AccountID, ID: cert.DeviceID, DSKPub: cert.DSKPub, DDHKPub: cert.DDHKPub, Status: DeviceActive, AuthorizedEpoch: cert.Epoch, EnrollmentAuthDigest: digest}
-	if account.Status == AccountRecoveryLocked {
-		account.Status = AccountActive
-		a.accounts[cert.AccountID] = account
-	}
 	a.enrollmentByDigest[digest] = struct{}{}
 	return nil
 }
 
 func (a *Authorizer) Revoke(cert EpochTransitionAuthorizationV1, recoveryPub [32]byte) error {
-	return a.applyTransition(cert, recoveryPub, true)
+	return a.applyRevoke(cert, recoveryPub)
 }
+
+// RecoveryReset is retained as a compatibility shim for callers of the old
+// immediate-reset API. It deliberately rejects all requests: account recovery
+// must use the durable RecoveryRequestV1 flow and its 48-hour delay.
 func (a *Authorizer) RecoveryReset(cert EpochTransitionAuthorizationV1, recoveryPub [32]byte) error {
-	return a.applyTransition(cert, recoveryPub, false)
+	if a == nil {
+		return ErrNilAuthorizer
+	}
+	return ErrInvalidAuthorization
 }
-func (a *Authorizer) applyTransition(cert EpochTransitionAuthorizationV1, recoveryPub [32]byte, single bool) error {
+
+func (a *Authorizer) applyRevoke(cert EpochTransitionAuthorizationV1, recoveryPub [32]byte) error {
 	if a == nil {
 		return ErrNilAuthorizer
 	}
 	if err := cert.Verify(recoveryPub); err != nil {
 		return err
 	}
-	if single && cert.Action != RevokeDeviceAction || !single && cert.Action != RecoveryResetAction {
+	if cert.Action != RevokeDeviceAction {
 		return ErrInvalidAuthorization
 	}
 	a.mu.Lock()
@@ -180,37 +188,26 @@ func (a *Authorizer) applyTransition(cert EpochTransitionAuthorizationV1, recove
 		return ErrInvalidEpoch
 	}
 	newEpoch := cert.NewEpoch
-	if single {
-		key := stateDeviceKey(cert.AccountID, cert.DeviceID)
-		target, ok := a.devices[key]
-		if !ok {
-			return ErrDeviceNotFound
-		}
-		if target.Status != DeviceActive {
-			return ErrDeviceRevoked
-		}
-		target.Status = DeviceRevoked
-		target.RevokedEpoch = newEpoch
-		a.devices[key] = target
+	key := stateDeviceKey(cert.AccountID, cert.DeviceID)
+	target, ok := a.devices[key]
+	if !ok {
+		return ErrDeviceNotFound
 	}
+	if target.Status != DeviceActive {
+		return ErrDeviceRevoked
+	}
+	target.Status = DeviceRevoked
+	target.RevokedEpoch = newEpoch
+	a.devices[key] = target
 	for key, device := range a.devices {
 		if device.AccountID != cert.AccountID || device.Status != DeviceActive {
 			continue
 		}
-		if single {
-			device.AuthorizedEpoch = newEpoch
-		} else {
-			device.Status = DeviceRevoked
-			device.RevokedEpoch = newEpoch
-		}
+		device.AuthorizedEpoch = newEpoch
 		a.devices[key] = device
 	}
 	account.Epoch = newEpoch
-	if single {
-		account.Status = AccountActive
-	} else {
-		account.Status = AccountRecoveryLocked
-	}
+	account.Status = AccountActive
 	a.accounts[cert.AccountID] = account
 	a.transitions[logical] = cert.Digest()
 	return nil
@@ -236,7 +233,10 @@ func (a *Authorizer) ValidateLeaf(leaf kt.TransparencyLeafV1) error {
 	if device.Status != DeviceActive {
 		return ErrDeviceRevoked
 	}
-	if device.AuthorizedEpoch != leaf.Epoch || account.Epoch != leaf.Epoch {
+	if leaf.Epoch == 0 || leaf.Epoch > LifecycleWireV1MaxEpoch ||
+		account.Epoch == 0 || account.Epoch > LifecycleWireV1MaxEpoch ||
+		device.AuthorizedEpoch == 0 || device.AuthorizedEpoch > LifecycleWireV1MaxEpoch ||
+		device.AuthorizedEpoch != leaf.Epoch || account.Epoch != leaf.Epoch {
 		return ErrInvalidEpoch
 	}
 	if device.DSKPub != leaf.DSKPub || device.DDHKPub != leaf.DDHKPub {

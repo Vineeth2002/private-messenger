@@ -5,6 +5,11 @@ import org.sovereign.pm.crypto.uniffi.deviceInitializeForAccount
 import org.sovereign.pm.crypto.uniffi.identityRestore
 import org.sovereign.pm.crypto.uniffi.recoveryInitialize
 
+/** Public certificate/key pair derived from the same recovery context. */
+data class NativeEnrollmentAuthorization(
+    val certificate: ByteArray,
+    val recoveryPublicKey: ByteArray,
+)
 /**
  * Owns an additional device's opaque native context for an in-progress enrollment.
  * DSK/DDHK private material never leaves Rust.
@@ -35,6 +40,30 @@ class NativeDeviceEnrollmentSession private constructor(
         }
     }
 
+    /**
+     * Creates the recovery-signed certificate and corresponding public recovery key from one
+     * recovery context. The mnemonic and all private key material remain inside this call/native
+     * boundary. The returned values are public protocol data.
+     */
+    fun signEnrollmentAuthorization(
+        recoveryMnemonic: String,
+        epoch: ULong,
+    ): NativeEnrollmentAuthorization {
+        val recoveryContext = recoveryInitialize(recoveryMnemonic)
+        return try {
+            val recoveryPublicKey = recoveryContext.recoveryPublicKey()
+            if (recoveryPublicKey.size != 32) {
+                throw IllegalStateException("Native recovery public key has an unexpected length.")
+            }
+            val certificate = recoveryContext.signDeviceEnrollmentForDevice(nativeDevice, epoch)
+            NativeEnrollmentAuthorization(
+                certificate = certificate,
+                recoveryPublicKey = recoveryPublicKey,
+            )
+        } finally {
+            recoveryContext.close()
+        }
+    }
     /**
      * Signs PoP only for the exact certificate bound by signEnrollmentCertificate.
      * The server must still validate challenge freshness and consume the challenge atomically.

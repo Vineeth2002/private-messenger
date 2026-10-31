@@ -20,6 +20,9 @@ interface AccountContext {
     bytes ddhk_public_key();
 
     [Throws=CryptoError]
+    bytes sign_device_http_request_v1(u64 epoch, string method, string request_target, bytes body);
+
+    [Throws=CryptoError]
     bytes seal_for_storage(bytes storage_key);
 
     [Throws=CryptoError]
@@ -55,6 +58,9 @@ namespace pm_crypto_core {
 
     [Throws=CryptoError]
     AccountContext identity_restore(bytes record, bytes storage_key);
+
+    [Throws=CryptoError]
+    string recovery_mnemonic_generate();
 
     [Throws=CryptoError]
     RecoveryContext recovery_initialize(string mnemonic);

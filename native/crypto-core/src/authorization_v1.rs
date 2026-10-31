@@ -14,7 +14,7 @@ pub const EPOCH_TRANSITION_DOMAIN: &[u8] = b"PM-V1-EPOCH-TRANSITION-v1";
 pub const RECOVERY_COMMITMENT_DOMAIN: &[u8] = b"PM-V1-RECOVERY-COMMITMENT";
 /// Candidate RecoveryRequestV1 domain. The lifecycle wire contract remains NOT FROZEN.
 pub const RECOVERY_REQUEST_DOMAIN: &[u8] = b"PM-V1-RECOVERY-REQUEST-v1";
-/// Candidate V1 lifecycle epoch ceiling; this does not change legacy certificate parsing.
+/// Candidate V1 lifecycle epoch ceiling. Base certificate sign/parse/verify boundaries enforce it.
 pub const LIFECYCLE_EPOCH_MAX: u64 = u32::MAX as u64;
 
 pub const REVOKE_DEVICE_ACTION: u64 = 1;
@@ -128,7 +128,11 @@ pub fn sign_device_enrollment(
     dsk_pub: [u8; 32],
     ddhk_pub: [u8; 32],
 ) -> Result<Vec<u8>, AuthorizationV1Error> {
-    if account_id == [0u8; 16] || device_id == [0u8; 16] || epoch == 0 {
+    if account_id == [0u8; 16]
+        || device_id == [0u8; 16]
+        || epoch == 0
+        || epoch > LIFECYCLE_EPOCH_MAX
+    {
         return Err(AuthorizationV1Error::InvalidField);
     }
 
@@ -157,7 +161,8 @@ pub fn sign_epoch_transition(
 ) -> Result<Vec<u8>, AuthorizationV1Error> {
     if account_id == [0u8; 16]
         || old_epoch == 0
-        || old_epoch == u64::MAX
+        || old_epoch >= LIFECYCLE_EPOCH_MAX
+        || new_epoch > LIFECYCLE_EPOCH_MAX
         || new_epoch != old_epoch + 1
     {
         return Err(AuthorizationV1Error::InvalidEpoch);
@@ -371,7 +376,11 @@ impl DeviceEnrollmentAuthorizationV1 {
         let dsk_pub = authorization_fixed::<32>(&fields, 5)?;
         let ddhk_pub = authorization_fixed::<32>(&fields, 6)?;
         let signature = authorization_fixed::<64>(&fields, 7)?;
-        if account_id == [0; 16] || device_id == [0; 16] || epoch == 0 {
+        if account_id == [0; 16]
+            || device_id == [0; 16]
+            || epoch == 0
+            || epoch > LIFECYCLE_EPOCH_MAX
+        {
             return Err(AuthorizationV1Error::InvalidField);
         }
         Ok(Self {
@@ -380,6 +389,13 @@ impl DeviceEnrollmentAuthorizationV1 {
     }
 
     pub fn verify(&self, recovery_pub: &[u8; 32]) -> Result<(), AuthorizationV1Error> {
+        if self.account_id == [0; 16]
+            || self.device_id == [0; 16]
+            || self.epoch == 0
+            || self.epoch > LIFECYCLE_EPOCH_MAX
+        {
+            return Err(AuthorizationV1Error::InvalidField);
+        }
         use ed25519_dalek::{Signature, VerifyingKey};
         let public = VerifyingKey::from_bytes(recovery_pub)
             .map_err(|_| AuthorizationV1Error::InvalidField)?;
@@ -404,7 +420,10 @@ impl EpochTransitionAuthorizationV1 {
         let action = authorization_uint(&fields, 5)?;
         let target = authorization_bytes(&fields, 6)?;
         let signature = authorization_fixed::<64>(&fields, 7)?;
-        if account_id == [0; 16] || old_epoch == 0 || old_epoch == u64::MAX
+        if account_id == [0; 16]
+            || old_epoch == 0
+            || old_epoch >= LIFECYCLE_EPOCH_MAX
+            || new_epoch > LIFECYCLE_EPOCH_MAX
             || new_epoch != old_epoch + 1
         {
             return Err(AuthorizationV1Error::InvalidEpoch);
@@ -424,14 +443,22 @@ impl EpochTransitionAuthorizationV1 {
     }
 
     pub fn verify(&self, recovery_pub: &[u8; 32]) -> Result<(), AuthorizationV1Error> {
+        if self.account_id == [0; 16]
+            || self.old_epoch == 0
+            || self.old_epoch >= LIFECYCLE_EPOCH_MAX
+            || self.new_epoch > LIFECYCLE_EPOCH_MAX
+            || self.new_epoch != self.old_epoch + 1
+        {
+            return Err(AuthorizationV1Error::InvalidEpoch);
+        }
         use ed25519_dalek::{Signature, VerifyingKey};
         let public = VerifyingKey::from_bytes(recovery_pub)
             .map_err(|_| AuthorizationV1Error::InvalidField)?;
         let signature = Signature::from_bytes(&self.signature);
-        let target = if self.action == RECOVERY_RESET_ACTION {
-            &[][..]
-        } else {
-            &self.device_id[..]
+        let target = match self.action {
+            REVOKE_DEVICE_ACTION if self.device_id != [0; 16] => &self.device_id[..],
+            RECOVERY_RESET_ACTION if self.device_id == [0; 16] => &[][..],
+            _ => return Err(AuthorizationV1Error::InvalidAction),
         };
         let core = core_transition(
             self.account_id, self.old_epoch, self.new_epoch, self.action, target,
@@ -1842,5 +1869,188 @@ mod tests {
             recovery_commitment(&public),
             crate::recovery::identity_recovery_commitment(&public)
         );
+    }
+
+    #[test]
+    fn lifecycle_epoch_domain_is_enforced_at_sign_parse_and_verify_boundaries() {
+        let signing_key = key();
+        let account = bytes::<16>(0x31);
+        let device = bytes::<16>(0x32);
+        let dsk = bytes::<32>(0x33);
+        let ddhk = bytes::<32>(0x34);
+        let max = LIFECYCLE_EPOCH_MAX;
+
+        let signed_enrollment_for_epoch = |epoch: u64| {
+            let core = core_enrollment(account, epoch, device, dsk, ddhk).unwrap();
+            let signature = signing_key
+                .sign(&[DEVICE_ENROLL_DOMAIN, core.as_slice()].concat());
+            cbor::encode_canonical(&Value::Map(vec![
+                (Value::Int(1), Value::Int(PROTOCOL_VERSION as i128)),
+                (Value::Int(2), Value::Bytes(account.to_vec())),
+                (Value::Int(3), Value::Int(epoch as i128)),
+                (Value::Int(4), Value::Bytes(device.to_vec())),
+                (Value::Int(5), Value::Bytes(dsk.to_vec())),
+                (Value::Int(6), Value::Bytes(ddhk.to_vec())),
+                (Value::Int(7), Value::Bytes(signature.to_bytes().to_vec())),
+            ])).unwrap()
+        };
+
+        let signed_transition_for_epochs = |old_epoch: u64, new_epoch: u64| {
+            let core = core_transition(
+                account, old_epoch, new_epoch, REVOKE_DEVICE_ACTION, &device,
+            ).unwrap();
+            let signature = signing_key
+                .sign(&[EPOCH_TRANSITION_DOMAIN, core.as_slice()].concat());
+            cbor::encode_canonical(&Value::Map(vec![
+                (Value::Int(1), Value::Int(PROTOCOL_VERSION as i128)),
+                (Value::Int(2), Value::Bytes(account.to_vec())),
+                (Value::Int(3), Value::Int(old_epoch as i128)),
+                (Value::Int(4), Value::Int(new_epoch as i128)),
+                (Value::Int(5), Value::Int(REVOKE_DEVICE_ACTION as i128)),
+                (Value::Int(6), Value::Bytes(device.to_vec())),
+                (Value::Int(7), Value::Bytes(signature.to_bytes().to_vec())),
+            ])).unwrap()
+        };
+
+        // The maximum representable V1 epoch is inclusive for enrollment.
+        let max_enrollment =
+            sign_device_enrollment(&signing_key, account, max, device, dsk, ddhk).unwrap();
+        let parsed_max = DeviceEnrollmentAuthorizationV1::parse(&max_enrollment).unwrap();
+        parsed_max.verify(&signing_key.verifying_key().to_bytes()).unwrap();
+
+        // Zero, max+1, and u64::MAX are rejected independently by signer, parser,
+        // and struct-level verifier. Parser inputs are correctly signed CBOR.
+        for epoch in [0, max + 1, u64::MAX] {
+            assert!(
+                sign_device_enrollment(&signing_key, account, epoch, device, dsk, ddhk).is_err(),
+                "enrollment signer accepted epoch {epoch}"
+            );
+            let raw = signed_enrollment_for_epoch(epoch);
+            assert!(
+                DeviceEnrollmentAuthorizationV1::parse(&raw).is_err(),
+                "enrollment parser accepted epoch {epoch}"
+            );
+            let invalid_core = core_enrollment(account, epoch, device, dsk, ddhk).unwrap();
+            let invalid_signature = signing_key
+                .sign(&[DEVICE_ENROLL_DOMAIN, invalid_core.as_slice()].concat());
+            let invalid = DeviceEnrollmentAuthorizationV1 {
+                raw: signed_enrollment_for_epoch(epoch),
+                account_id: account,
+                epoch,
+                device_id: device,
+                dsk_pub: dsk,
+                ddhk_pub: ddhk,
+                signature: invalid_signature.to_bytes(),
+            };
+            assert!(
+                invalid.verify(&signing_key.verifying_key().to_bytes()).is_err(),
+                "enrollment verifier accepted epoch {epoch}"
+            );
+        }
+
+        // A transition may advance max-1 -> max, but may not cross the ceiling.
+        let max_transition = sign_epoch_transition(
+            &signing_key, account, max - 1, max, REVOKE_DEVICE_ACTION, &device,
+        ).unwrap();
+        let parsed_transition = EpochTransitionAuthorizationV1::parse(&max_transition).unwrap();
+        parsed_transition.verify(&signing_key.verifying_key().to_bytes()).unwrap();
+
+        // Include zero, out-of-range destinations, and u64::MAX. In particular,
+        // u64::MAX as old_epoch must reject before old_epoch + 1 arithmetic.
+        for (old_epoch, new_epoch) in [
+            (0, 1),
+            (1, 0),
+            (max, max + 1),
+            (1, u64::MAX),
+            (u64::MAX, 0),
+        ] {
+            assert!(
+                sign_epoch_transition(
+                    &signing_key, account, old_epoch, new_epoch,
+                    REVOKE_DEVICE_ACTION, &device,
+                ).is_err(),
+                "transition signer accepted {old_epoch} -> {new_epoch}"
+            );
+            let raw = signed_transition_for_epochs(old_epoch, new_epoch);
+            assert!(
+                EpochTransitionAuthorizationV1::parse(&raw).is_err(),
+                "transition parser accepted {old_epoch} -> {new_epoch}"
+            );
+            let invalid_core = core_transition(
+                account, old_epoch, new_epoch, REVOKE_DEVICE_ACTION, &device,
+            ).unwrap();
+            let invalid_signature = signing_key
+                .sign(&[EPOCH_TRANSITION_DOMAIN, invalid_core.as_slice()].concat());
+            let invalid = EpochTransitionAuthorizationV1 {
+                raw: signed_transition_for_epochs(old_epoch, new_epoch),
+                account_id: account,
+                old_epoch,
+                new_epoch,
+                action: REVOKE_DEVICE_ACTION,
+                device_id: device,
+                signature: invalid_signature.to_bytes(),
+            };
+            assert!(
+                invalid.verify(&signing_key.verifying_key().to_bytes()).is_err(),
+                "transition verifier accepted {old_epoch} -> {new_epoch}"
+            );
+        }
+
+        // Struct-level verification must enforce the same action/target shape as parsing.
+        let invalid_action_core = core_transition(
+            account, max - 1, max, 99, &device,
+        ).unwrap();
+        let invalid_action_signature = signing_key
+            .sign(&[EPOCH_TRANSITION_DOMAIN, invalid_action_core.as_slice()].concat());
+        let invalid_action = EpochTransitionAuthorizationV1 {
+            raw: vec![1],
+            account_id: account,
+            old_epoch: max - 1,
+            new_epoch: max,
+            action: 99,
+            device_id: device,
+            signature: invalid_action_signature.to_bytes(),
+        };
+        assert!(matches!(
+            invalid_action.verify(&signing_key.verifying_key().to_bytes()),
+            Err(AuthorizationV1Error::InvalidAction)
+        ));
+        let zero_target = [0; 16];
+        let zero_target_core = core_transition(
+            account, max - 1, max, REVOKE_DEVICE_ACTION, &zero_target,
+        ).unwrap();
+        let zero_target_signature = signing_key
+            .sign(&[EPOCH_TRANSITION_DOMAIN, zero_target_core.as_slice()].concat());
+        let zero_target_revoke = EpochTransitionAuthorizationV1 {
+            raw: vec![1],
+            account_id: account,
+            old_epoch: max - 1,
+            new_epoch: max,
+            action: REVOKE_DEVICE_ACTION,
+            device_id: zero_target,
+            signature: zero_target_signature.to_bytes(),
+        };
+        assert!(matches!(
+            zero_target_revoke.verify(&signing_key.verifying_key().to_bytes()),
+            Err(AuthorizationV1Error::InvalidAction)
+        ));
+        let empty_recovery_core = core_transition(
+            account, max - 1, max, RECOVERY_RESET_ACTION, &[],
+        ).unwrap();
+        let empty_recovery_signature = signing_key
+            .sign(&[EPOCH_TRANSITION_DOMAIN, empty_recovery_core.as_slice()].concat());
+        let nonempty_target_recovery = EpochTransitionAuthorizationV1 {
+            raw: vec![1],
+            account_id: account,
+            old_epoch: max - 1,
+            new_epoch: max,
+            action: RECOVERY_RESET_ACTION,
+            device_id: device,
+            signature: empty_recovery_signature.to_bytes(),
+        };
+        assert!(matches!(
+            nonempty_target_recovery.verify(&signing_key.verifying_key().to_bytes()),
+            Err(AuthorizationV1Error::InvalidAction)
+        ));
     }
 }

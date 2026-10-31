@@ -35,8 +35,8 @@ func (p *DeviceProvisioner) Enroll(ctx context.Context, device Device, certifica
 	if p == nil || p.db == nil {
 		return errors.New("nil device provisioner")
 	}
-	if device.AccountEpoch < 1 {
-		return errors.New("device epoch must be >= 1")
+	if device.AccountEpoch < 1 || device.AccountEpoch > uint64(^uint32(0)) {
+		return errors.New("device epoch must be in the V1 range 1..=2^32-1")
 	}
 	if device.AccountID == [16]byte{} || device.DeviceID == [16]byte{} {
 		return errors.New("device account and device IDs are required")
@@ -73,8 +73,8 @@ SELECT account_epoch FROM accounts WHERE account_id = $1::uuid FOR UPDATE
 		}
 		return err
 	}
-	if accountEpoch < 1 {
-		return errors.New("persisted account epoch must be >= 1")
+	if accountEpoch < 1 || accountEpoch > int64(^uint32(0)) {
+		return errors.New("persisted account epoch is outside the V1 range")
 	}
 	if uint64(accountEpoch) != device.AccountEpoch {
 		return fmt.Errorf("device epoch %d does not match account epoch %d", device.AccountEpoch, accountEpoch)

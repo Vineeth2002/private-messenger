@@ -204,6 +204,42 @@ impl AccountContext {
         let secret = StaticSecret::from(*self.ddhk_seed);
         PublicKey::from(&secret).to_bytes().to_vec()
     }
+
+    /// Sign a request using this device's DSK. The nonce and timestamp are
+    /// generated inside the native boundary; the private key never leaves Rust.
+    pub fn sign_device_http_request_v1(
+        &self,
+        epoch: u64,
+        method: String,
+        request_target: String,
+        body: Vec<u8>,
+    ) -> Result<Vec<u8>, CryptoError> {
+        if epoch == 0 || epoch > crate::device_request_auth_v1::MAX_EPOCH {
+            return Err(CryptoError::InvalidField);
+        }
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| CryptoError::EntropyFailure)?
+            .as_secs();
+        if timestamp == 0 {
+            return Err(CryptoError::EntropyFailure);
+        }
+        let mut rng = OsRng;
+        let mut nonce = [0u8; 32];
+        rng.try_fill_bytes(&mut nonce).map_err(|_| CryptoError::EntropyFailure)?;
+        let signing_key = SigningKey::from_bytes(&self.dsk_seed);
+        crate::device_request_auth_v1::sign_v1(
+            &signing_key,
+            &self.account_id,
+            &self.device_id,
+            epoch,
+            timestamp,
+            &nonce,
+            &method,
+            &request_target,
+            &body,
+        ).map_err(|_| CryptoError::InvalidField)
+    }
     /// Sign PoP only for the exact recovery-authorized certificate this context signed through
     /// RecoveryContext.sign_device_enrollment_for_device. The server must independently verify
     /// challenge freshness and atomically consume the challenge during activation.
@@ -418,6 +454,14 @@ fn uuid_v7(rng: &mut OsRng) -> Result<[u8; 16], CryptoError> {
     out[8] = (out[8] & 0x3f) | 0x80;
 
     Ok(out)
+}
+
+/// Generate a recovery phrase from native OS entropy. Treat the returned phrase as a secret.
+pub fn recovery_mnemonic_generate() -> Result<String, CryptoError> {
+    crate::recovery::generate_recovery_mnemonic().map_err(|error| match error {
+        crate::recovery::RecoveryError::EntropyFailure => CryptoError::EntropyFailure,
+        _ => CryptoError::InvalidField,
+    })
 }
 
 /// Initialize an opaque recovery signing context from the recovery mnemonic.

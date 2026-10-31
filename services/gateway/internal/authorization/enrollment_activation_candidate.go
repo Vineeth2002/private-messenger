@@ -51,6 +51,13 @@ func (a *PostgresAuthorizer) IssueCandidateEnrollmentChallenge(
 	if err != nil {
 		return EnrollmentChallenge{}, err
 	}
+	pending, err := hasPendingRecoveryTx(ctx, tx, cert.AccountID)
+	if err != nil {
+		return EnrollmentChallenge{}, err
+	}
+	if pending {
+		return EnrollmentChallenge{}, ErrRecoveryPending
+	}
 	if account.Status != AccountActive {
 		return EnrollmentChallenge{}, ErrAccountLocked
 	}
@@ -149,6 +156,13 @@ func (a *PostgresAuthorizer) ActivateCandidateEnrollment(
 	if err != nil {
 		return err
 	}
+	pending, err := hasPendingRecoveryTx(ctx, tx, cert.AccountID)
+	if err != nil {
+		return err
+	}
+	if pending {
+		return ErrRecoveryPending
+	}
 	if account.Status != AccountActive {
 		return ErrAccountLocked
 	}
@@ -186,7 +200,8 @@ FOR UPDATE
 	if len(challengeAccountID) != 16 || len(challengeDeviceID) != 16 ||
 		!bytes.Equal(challengeAccountID, cert.AccountID[:]) ||
 		!bytes.Equal(challengeDeviceID, cert.DeviceID[:]) ||
-		challengeEpoch < 1 || uint64(challengeEpoch) != cert.Epoch ||
+		challengeEpoch < 1 || uint64(challengeEpoch) > LifecycleWireV1MaxEpoch ||
+		uint64(challengeEpoch) != cert.Epoch ||
 		len(storedDigest) != 32 || !bytes.Equal(storedDigest, digest[:]) ||
 		len(storedNonce) != 32 ||
 		recoveryRequestID.Valid || len(recoveryRequestDigest) != 0 {
@@ -367,7 +382,8 @@ FOR UPDATE
 	if err != nil {
 		return persistedAccount{}, err
 	}
-	if authEpoch != epoch || len(storedCommitment) != 32 || len(storedPublic) != 32 ||
+	if authEpoch != epoch || authEpoch < 1 || uint64(authEpoch) > LifecycleWireV1MaxEpoch ||
+		len(storedCommitment) != 32 || len(storedPublic) != 32 ||
 		!bytes.Equal(storedCommitment, irc) ||
 		!bytes.Equal(storedPublic, recoveryPublicKey[:]) {
 		return persistedAccount{}, ErrAuthorizationConflict

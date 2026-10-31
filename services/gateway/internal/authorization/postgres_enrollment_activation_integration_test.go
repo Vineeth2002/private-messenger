@@ -43,24 +43,24 @@ func openCandidateEnrollmentIntegrationDB(t *testing.T) *sql.DB {
 	if err := db.PingContext(ctx); err != nil {
 		t.Fatalf("ping PostgreSQL integration database: %v", err)
 	}
-       var databaseName, serverAddress, schemaName string
-       var serverPort int
-       var inRecovery bool
-       if err := db.QueryRowContext(ctx, `
+	var databaseName, serverAddress, schemaName string
+	var serverPort int
+	var inRecovery bool
+	if err := db.QueryRowContext(ctx, `
                SELECT current_database(),
                       COALESCE(host(inet_server_addr()), ''),
                       COALESCE(inet_server_port(), 0),
                       current_schema(),
                       pg_is_in_recovery()
        `).Scan(&databaseName, &serverAddress, &serverPort, &schemaName, &inRecovery); err != nil {
-               t.Fatalf("inspect PostgreSQL integration connection: %v", err)
-       }
-       if databaseName != candidateEnrollmentIntegrationDatabase {
-               t.Fatalf("safety stop: integration tests are restricted to database %q, connected to %q", candidateEnrollmentIntegrationDatabase, databaseName)
-       }
-       if serverAddress != "127.0.0.1" || serverPort != 5432 || schemaName != "public" || inRecovery {
-               t.Fatalf("safety stop: expected local primary PostgreSQL at 127.0.0.1:5432 with public schema; got address=%q port=%d schema=%q in_recovery=%v", serverAddress, serverPort, schemaName, inRecovery)
-       }
+		t.Fatalf("inspect PostgreSQL integration connection: %v", err)
+	}
+	if databaseName != candidateEnrollmentIntegrationDatabase {
+		t.Fatalf("safety stop: integration tests are restricted to database %q, connected to %q", candidateEnrollmentIntegrationDatabase, databaseName)
+	}
+	if serverAddress != "127.0.0.1" || serverPort != 5432 || schemaName != "public" || inRecovery {
+		t.Fatalf("safety stop: expected local primary PostgreSQL at 127.0.0.1:5432 with public schema; got address=%q port=%d schema=%q in_recovery=%v", serverAddress, serverPort, schemaName, inRecovery)
+	}
 
 	var schemaReady bool
 	if err := db.QueryRowContext(ctx, `SELECT
@@ -186,6 +186,34 @@ func (f *candidateEnrollmentPGFixture) issueChallenge() (EnrollmentChallenge, er
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return f.authorizer.IssueCandidateEnrollmentChallenge(ctx, f.certificate.Raw, f.recoveryPublic)
+}
+
+func (f *candidateEnrollmentPGFixture) insertExpiredChallenge() (EnrollmentChallenge, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	challenge := EnrollmentChallenge{ID: randomCandidateEnrollmentID(f.t)}
+	if _, err := rand.Read(challenge.Nonce[:]); err != nil {
+		return EnrollmentChallenge{}, err
+	}
+	digest := sha256.Sum256(f.certificate.Raw)
+	err := f.db.QueryRowContext(ctx, `
+INSERT INTO device_enrollment_challenges (
+    challenge_id, account_id, device_id, account_epoch,
+    enrollment_certificate_digest, challenge_nonce, created_at, expires_at
+) VALUES (
+    $1::uuid, $2::uuid, $3::uuid, $4, $5, $6,
+    clock_timestamp() - INTERVAL '10 minutes',
+    clock_timestamp() - INTERVAL '1 second'
+)
+RETURNING expires_at
+`, uuidText(challenge.ID), uuidText(f.certificate.AccountID),
+		uuidText(f.certificate.DeviceID), int64(f.certificate.Epoch),
+		digest[:], challenge.Nonce[:]).Scan(&challenge.ExpiresAt)
+	if err != nil {
+		return EnrollmentChallenge{}, err
+	}
+	return challenge, nil
 }
 
 func (f *candidateEnrollmentPGFixture) proofFor(challenge EnrollmentChallenge) []byte {
@@ -387,20 +415,11 @@ func TestPostgresCandidateEnrollmentInvalidProofDoesNotActivateIntegration(t *te
 func TestPostgresCandidateEnrollmentExpiredChallengeDoesNotActivateIntegration(t *testing.T) {
 	db := openCandidateEnrollmentIntegrationDB(t)
 	f := newCandidateEnrollmentPGFixture(t, db)
-	challenge, err := f.issueChallenge()
+	challenge, err := f.insertExpiredChallenge()
 	if err != nil {
-		t.Fatalf("issue challenge: %v", err)
+		t.Fatalf("insert already-expired challenge: %v", err)
 	}
 	proof := f.proofFor(challenge)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	_, err = db.ExecContext(ctx, `UPDATE device_enrollment_challenges
-SET created_at = clock_timestamp() - INTERVAL '10 minutes',
-    expires_at = clock_timestamp() - INTERVAL '1 second'
-WHERE challenge_id = $1::uuid`, uuidText(challenge.ID))
-	cancel()
-	if err != nil {
-		t.Fatalf("expire challenge in test database: %v", err)
-	}
 	if err := f.activate(proof); !errors.Is(err, ErrEnrollmentChallengeExpired) {
 		t.Fatalf("expired challenge activation: got %v, want ErrEnrollmentChallengeExpired", err)
 	}

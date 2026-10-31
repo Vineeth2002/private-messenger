@@ -38,6 +38,12 @@ func (a *PostgresAuthorizer) Transition(ctx context.Context, cert EpochTransitio
 	if err := cert.Verify(recoveryPub); err != nil {
 		return err
 	}
+	// RecoveryResetAction is a legacy immediate-reset operation. Applying it
+	// here would bypass the durable 48-hour RecoveryRequestV1 lifecycle.
+	// Keep the wire format parseable, but never let this method mutate state for it.
+	if cert.Action != RevokeDeviceAction {
+		return ErrInvalidAuthorization
+	}
 	tx, err := a.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -53,6 +59,16 @@ func (a *PostgresAuthorizer) Transition(ctx context.Context, cert EpochTransitio
 	} else if ok {
 		_ = prior
 		return nil
+	}
+	if account.Status != AccountActive {
+		return ErrAccountLocked
+	}
+	pending, err := hasPendingRecoveryTx(ctx, tx, cert.AccountID)
+	if err != nil {
+		return err
+	}
+	if pending {
+		return ErrRecoveryPending
 	}
 	if account.Epoch != cert.OldEpoch {
 		return ErrInvalidEpoch
@@ -95,19 +111,6 @@ func (a *PostgresAuthorizer) Transition(ctx context.Context, cert EpochTransitio
 		if _, err = tx.ExecContext(ctx, `UPDATE authorization_accounts SET epoch=$2,status=1,updated_at=now() WHERE account_id=$1::uuid`, uuidText(cert.AccountID), int64(cert.NewEpoch)); err != nil {
 			return err
 		}
-	case RecoveryResetAction:
-		if _, err = tx.ExecContext(ctx, `UPDATE authorization_devices SET status=2,revoked_epoch=$2,updated_at=now() WHERE account_id=$1::uuid AND status=1`, uuidText(cert.AccountID), int64(cert.NewEpoch)); err != nil {
-			return err
-		}
-		if _, err = tx.ExecContext(ctx, `UPDATE devices d SET account_epoch=$2,revoked_at=COALESCE(d.revoked_at,$3) FROM authorization_devices ad WHERE ad.device_id=d.device_id AND ad.account_id=$1::uuid AND ad.status=2`, uuidText(cert.AccountID), int64(cert.NewEpoch), now); err != nil {
-			return err
-		}
-		if _, err = tx.ExecContext(ctx, `UPDATE accounts SET account_epoch=$2 WHERE account_id=$1::uuid`, uuidText(cert.AccountID), int64(cert.NewEpoch)); err != nil {
-			return err
-		}
-		if _, err = tx.ExecContext(ctx, `UPDATE authorization_accounts SET epoch=$2,status=2,updated_at=now() WHERE account_id=$1::uuid`, uuidText(cert.AccountID), int64(cert.NewEpoch)); err != nil {
-			return err
-		}
 	default:
 		return ErrInvalidAuthorization
 	}
@@ -137,7 +140,11 @@ func (a *PostgresAuthorizer) ValidateLeaf(ctx context.Context, leaf kt.Transpare
 	if deviceStatus != int(DeviceActive) {
 		return ErrDeviceRevoked
 	}
-	if accountEpoch < 1 || uint64(accountEpoch) != leaf.Epoch || deviceEpoch < 1 || uint64(deviceEpoch) != leaf.Epoch {
+	if accountEpoch < 1 || uint64(accountEpoch) > LifecycleWireV1MaxEpoch ||
+		uint64(accountEpoch) != leaf.Epoch ||
+		deviceEpoch < 1 || uint64(deviceEpoch) > LifecycleWireV1MaxEpoch ||
+		leaf.Epoch == 0 || leaf.Epoch > LifecycleWireV1MaxEpoch ||
+		uint64(deviceEpoch) != leaf.Epoch {
 		return ErrInvalidEpoch
 	}
 	if len(dsk) != 32 || len(ddhk) != 32 || !bytes.Equal(dsk, leaf.DSKPub[:]) || !bytes.Equal(ddhk, leaf.DDHKPub[:]) {
@@ -164,7 +171,7 @@ func (a *PostgresAuthorizer) ensureAccountTx(ctx context.Context, tx *sql.Tx, ac
 	if err != nil {
 		return persistedAccount{}, err
 	}
-	if epoch < 1 || len(irc) != 32 {
+	if epoch < 1 || uint64(epoch) > LifecycleWireV1MaxEpoch || len(irc) != 32 {
 		return persistedAccount{}, ErrAuthorizationConflict
 	}
 	var commitment [32]byte
@@ -185,7 +192,9 @@ func (a *PostgresAuthorizer) ensureAccountTx(ctx context.Context, tx *sql.Tx, ac
 	if err != nil {
 		return persistedAccount{}, err
 	}
-	if rowEpoch != epoch || len(storedCommitment) != 32 || len(storedPub) != 32 || !bytes.Equal(storedCommitment, irc) || !bytes.Equal(storedPub, recoveryPub[:]) {
+	if rowEpoch != epoch || rowEpoch < 1 || uint64(rowEpoch) > LifecycleWireV1MaxEpoch ||
+		len(storedCommitment) != 32 || len(storedPub) != 32 ||
+		!bytes.Equal(storedCommitment, irc) || !bytes.Equal(storedPub, recoveryPub[:]) {
 		return persistedAccount{}, ErrAuthorizationConflict
 	}
 	if status < 1 || status > 2 {

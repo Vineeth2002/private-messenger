@@ -1,3 +1,4 @@
+
 package org.sovereign.pm.security
 
 import android.content.Context
@@ -236,6 +237,14 @@ class IdentityStoreTest {
 
             return testIdentity()
         }
+
+        override fun generateRecoveryMnemonic(): String =
+            throw UnsupportedOperationException("Recovery phrase generation is not used by IdentityStoreTest.")
+
+        override fun bindDeviceRequestSigner(identity: AccountIdentity): org.sovereign.pm.crypto.DeviceRequestSigner =
+            throw UnsupportedOperationException(
+                "Device request signing is not used by IdentityStoreTest."
+            )
     }
 
     private class FakePlatformKek(
