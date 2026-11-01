@@ -37,6 +37,7 @@ func main() {
 	deviceRequestAuthEnabled := os.Getenv("GATEWAY_ENABLE_DEVICE_REQUEST_AUTH") == "1"
 	recoveryAPIEnabled := os.Getenv("GATEWAY_ENABLE_RECOVERY_API") == "1"
 	initialBootstrapEnabled := os.Getenv("GATEWAY_ENABLE_INITIAL_ACCOUNT_BOOTSTRAP") == "1"
+	candidateEnrollmentEnabled := os.Getenv("GATEWAY_ENABLE_CANDIDATE_ENROLLMENT") == "1"
 	if initialBootstrapEnabled && databaseURL == "" {
 		log.Fatal("GATEWAY_DATABASE_URL is required when initial-account bootstrap is enabled")
 	}
@@ -128,26 +129,41 @@ func main() {
 			log.Printf("demo message relay disabled")
 		}
 
+		if initialBootstrapEnabled || candidateEnrollmentEnabled || recoveryAPIEnabled {
+			var lifecycleEventSchemaReady bool
+			checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			err := db.QueryRowContext(checkCtx, `SELECT
+				EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = to_regclass('public.authorization_events') AND tgname = 'authorization_events_block_mutation_trg' AND NOT tgisinternal AND tgenabled = 'O') AND
+				EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = to_regclass('public.authorization_events') AND tgname = 'authorization_events_block_truncate_trg' AND NOT tgisinternal AND tgenabled = 'O') AND
+				EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = to_regclass('public.authorization_events') AND conname = 'authorization_events_kind_check' AND pg_get_constraintdef(oid) LIKE '%RECOVERY_FINALIZED%')`).Scan(&lifecycleEventSchemaReady)
+			checkCancel()
+			if err != nil {
+				log.Fatalf("check append-only lifecycle event schema: %v", err)
+			}
+			if !lifecycleEventSchemaReady {
+				log.Fatal("initial-account bootstrap, candidate enrollment, and recovery APIs require gateway migration 0012 (typed recovery-finalization event and append-only event guards)")
+			}
+		}
+
 		if initialBootstrapEnabled {
 			var bootstrapSchemaReady bool
 			checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			err := db.QueryRowContext(checkCtx, `SELECT
-				to_regclass('public.initial_account_bootstrap_challenges') IS NOT NULL AND
-				to_regclass('public.authorization_accounts') IS NOT NULL AND
-				to_regclass('public.authorization_devices') IS NOT NULL AND
-				to_regclass('public.authorization_events') IS NOT NULL`).Scan(&bootstrapSchemaReady)
+to_regclass('public.initial_account_bootstrap_challenges') IS NOT NULL AND
+to_regclass('public.authorization_accounts') IS NOT NULL AND
+to_regclass('public.authorization_devices') IS NOT NULL AND
+to_regclass('public.authorization_events') IS NOT NULL`).Scan(&bootstrapSchemaReady)
 			checkCancel()
 			if err != nil {
 				log.Fatalf("check initial-account bootstrap schema: %v", err)
 			}
 			if !bootstrapSchemaReady {
-				log.Fatal("initial-account bootstrap requires migrations 0001, 0004, and 0011")
+				log.Fatal("initial-account bootstrap requires gateway migrations 0001, 0004, 0011, and 0012")
 			}
 			handler = gwhttp.NewHandlerWithInitialAccountBootstrap(handler, authorization.NewPostgresAuthorizer(db))
 			log.Printf("WARNING: initial-account bootstrap enabled; this candidate flow is not production-ready")
 		}
-
-		if os.Getenv("GATEWAY_ENABLE_CANDIDATE_ENROLLMENT") == "1" {
+		if candidateEnrollmentEnabled {
 			handler = gwhttp.NewHandlerWithCandidateEnrollment(
 				handler,
 				authorization.NewPostgresAuthorizer(db),
@@ -170,7 +186,7 @@ func main() {
 				log.Fatalf("check recovery API schema: %v", err)
 			}
 			if !recoverySchemaReady {
-				log.Fatal("recovery API requires authorization migrations including migrations 0008 and 0009")
+				log.Fatal("recovery API requires authorization migrations 0008 through 0012, including rate limits and append-only lifecycle events")
 			}
 			recoveryLimiter, err := recoveryratelimit.NewPostgres(
 				db, recoveryRateLimitHMACKey, 10, time.Minute,

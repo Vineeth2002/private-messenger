@@ -79,13 +79,16 @@ func openMessageHTTPAuthIntegrationDB(t *testing.T) *sql.DB {
             to_regclass('public.authorization_events') IS NOT NULL AND
             to_regclass('public.device_enrollment_challenges') IS NOT NULL AND
             to_regclass('public.device_request_nonces') IS NOT NULL AND
-            to_regclass('public.message_envelopes') IS NOT NULL
+            to_regclass('public.message_envelopes') IS NOT NULL AND
+            EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = to_regclass('public.authorization_events') AND tgname = 'authorization_events_block_mutation_trg' AND NOT tgisinternal AND tgenabled = 'O') AND
+            EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = to_regclass('public.authorization_events') AND tgname = 'authorization_events_block_truncate_trg' AND NOT tgisinternal AND tgenabled = 'O') AND
+            EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = to_regclass('public.authorization_events') AND conname = 'authorization_events_kind_check' AND pg_get_constraintdef(oid) LIKE '%RECOVERY_FINALIZED%')
     `).Scan(&schemaReady); err != nil {
 		t.Fatalf("inspect HTTP device-auth integration schema: %v", err)
 	}
 
 	if !schemaReady {
-		t.Fatal("integration schema is incomplete; apply the required gateway migrations to the dedicated test database")
+		t.Fatal("integration schema is incomplete; apply gateway migrations through 0012 to the dedicated test database")
 	}
 
 	return db
@@ -126,6 +129,20 @@ func newMessageHTTPAuthPostgresFixture(t *testing.T, db *sql.DB) *messageHTTPAut
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cleanupCancel()
 
+		tx, err := db.BeginTx(cleanupCtx, nil)
+		if err != nil {
+			t.Errorf("begin HTTP device-auth fixture cleanup: %v", err)
+			return
+		}
+		defer tx.Rollback()
+		if _, err := tx.ExecContext(cleanupCtx, `ALTER TABLE authorization_events DISABLE TRIGGER authorization_events_block_mutation_trg`); err != nil {
+			t.Errorf("disable event mutation guard for disposable fixture cleanup: %v", err)
+			return
+		}
+		if _, err := tx.ExecContext(cleanupCtx, `ALTER TABLE authorization_events DISABLE TRIGGER authorization_events_block_truncate_trg`); err != nil {
+			t.Errorf("disable event truncate guard for disposable fixture cleanup: %v", err)
+			return
+		}
 		statements := []struct {
 			query string
 			args  []any
@@ -145,10 +162,21 @@ func newMessageHTTPAuthPostgresFixture(t *testing.T, db *sql.DB) *messageHTTPAut
 		}
 
 		for _, statement := range statements {
-			if _, err := db.ExecContext(cleanupCtx, statement.query, statement.args...); err != nil {
+			if _, err := tx.ExecContext(cleanupCtx, statement.query, statement.args...); err != nil {
 				t.Errorf("cleanup HTTP device-auth fixture: %v", err)
 				return
 			}
+		}
+		if _, err := tx.ExecContext(cleanupCtx, `ALTER TABLE authorization_events ENABLE TRIGGER authorization_events_block_mutation_trg`); err != nil {
+			t.Errorf("restore event mutation guard after disposable fixture cleanup: %v", err)
+			return
+		}
+		if _, err := tx.ExecContext(cleanupCtx, `ALTER TABLE authorization_events ENABLE TRIGGER authorization_events_block_truncate_trg`); err != nil {
+			t.Errorf("restore event truncate guard after disposable fixture cleanup: %v", err)
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			t.Errorf("commit HTTP device-auth fixture cleanup: %v", err)
 		}
 	})
 

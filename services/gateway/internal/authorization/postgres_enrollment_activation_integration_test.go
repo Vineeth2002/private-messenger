@@ -70,11 +70,14 @@ func openCandidateEnrollmentIntegrationDB(t *testing.T) *sql.DB {
 		to_regclass('public.authorization_accounts') IS NOT NULL AND
 		to_regclass('public.authorization_devices') IS NOT NULL AND
 		to_regclass('public.authorization_events') IS NOT NULL AND
-		to_regclass('public.device_enrollment_challenges') IS NOT NULL`).Scan(&schemaReady); err != nil {
+		to_regclass('public.device_enrollment_challenges') IS NOT NULL AND
+		EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = to_regclass('public.authorization_events') AND tgname = 'authorization_events_block_mutation_trg' AND NOT tgisinternal AND tgenabled = 'O') AND
+		EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = to_regclass('public.authorization_events') AND tgname = 'authorization_events_block_truncate_trg' AND NOT tgisinternal AND tgenabled = 'O') AND
+		EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = to_regclass('public.authorization_events') AND conname = 'authorization_events_kind_check' AND pg_get_constraintdef(oid) LIKE '%RECOVERY_FINALIZED%')`).Scan(&schemaReady); err != nil {
 		t.Fatalf("inspect PostgreSQL integration schema: %v", err)
 	}
 	if !schemaReady {
-		t.Fatal("integration schema is incomplete; apply migrations 0001 through 0005 to the dedicated test database first")
+		t.Fatal("integration schema is incomplete; apply gateway migrations 0001 through 0012 to the dedicated test database first")
 	}
 	return db
 }
@@ -160,25 +163,46 @@ func (f *candidateEnrollmentPGFixture) cleanup() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	account := uuidText(f.accountID)
-	statements := []string{
-		`DELETE FROM authorization_events WHERE account_id = $1::uuid`,
-		`DELETE FROM device_enrollment_challenges WHERE account_id = $1::uuid`,
-		`DELETE FROM authorization_devices WHERE account_id = $1::uuid`,
-		`DELETE FROM delivery_acks WHERE envelope_id IN (SELECT envelope_id FROM message_envelopes WHERE recipient_device IN (SELECT device_id FROM devices WHERE account_id = $1::uuid))`,
-		`DELETE FROM message_envelopes WHERE recipient_device IN (SELECT device_id FROM devices WHERE account_id = $1::uuid)`,
-		`DELETE FROM media_upload_sessions WHERE owner_device IN (SELECT device_id FROM devices WHERE account_id = $1::uuid)`,
-		`DELETE FROM notification_state WHERE device_id IN (SELECT device_id FROM devices WHERE account_id = $1::uuid)`,
-		`DELETE FROM signed_prekeys WHERE device_id IN (SELECT device_id FROM devices WHERE account_id = $1::uuid)`,
-		`DELETE FROM one_time_prekeys WHERE device_id IN (SELECT device_id FROM devices WHERE account_id = $1::uuid)`,
-		`DELETE FROM device_certificates WHERE device_id IN (SELECT device_id FROM devices WHERE account_id = $1::uuid)`,
-		`DELETE FROM devices WHERE account_id = $1::uuid`,
-		`DELETE FROM authorization_accounts WHERE account_id = $1::uuid`,
-		`DELETE FROM accounts WHERE account_id = $1::uuid`,
+	tx, err := f.db.BeginTx(ctx, nil)
+	if err != nil {
+		f.t.Errorf("begin PostgreSQL integration fixture cleanup: %v", err)
+		return
+	}
+	defer tx.Rollback()
+
+	// The disposable test database owner may bypass append-only guards solely
+	// to remove fixture rows. Keep disable/delete/enable in one transaction so
+	// the guards are restored atomically, including on rollback.
+	statements := []struct {
+		query string
+		args  []any
+	}{
+		{`ALTER TABLE authorization_events DISABLE TRIGGER authorization_events_block_mutation_trg`, nil},
+		{`ALTER TABLE authorization_events DISABLE TRIGGER authorization_events_block_truncate_trg`, nil},
+		{`DELETE FROM authorization_events WHERE account_id = $1::uuid`, []any{account}},
+		{`ALTER TABLE authorization_events ENABLE TRIGGER authorization_events_block_mutation_trg`, nil},
+		{`ALTER TABLE authorization_events ENABLE TRIGGER authorization_events_block_truncate_trg`, nil},
+		{`DELETE FROM device_enrollment_challenges WHERE account_id = $1::uuid`, []any{account}},
+		{`DELETE FROM authorization_devices WHERE account_id = $1::uuid`, []any{account}},
+		{`DELETE FROM delivery_acks WHERE envelope_id IN (SELECT envelope_id FROM message_envelopes WHERE recipient_device IN (SELECT device_id FROM devices WHERE account_id = $1::uuid))`, []any{account}},
+		{`DELETE FROM message_envelopes WHERE recipient_device IN (SELECT device_id FROM devices WHERE account_id = $1::uuid)`, []any{account}},
+		{`DELETE FROM media_upload_sessions WHERE owner_device IN (SELECT device_id FROM devices WHERE account_id = $1::uuid)`, []any{account}},
+		{`DELETE FROM notification_state WHERE device_id IN (SELECT device_id FROM devices WHERE account_id = $1::uuid)`, []any{account}},
+		{`DELETE FROM signed_prekeys WHERE device_id IN (SELECT device_id FROM devices WHERE account_id = $1::uuid)`, []any{account}},
+		{`DELETE FROM one_time_prekeys WHERE device_id IN (SELECT device_id FROM devices WHERE account_id = $1::uuid)`, []any{account}},
+		{`DELETE FROM device_certificates WHERE device_id IN (SELECT device_id FROM devices WHERE account_id = $1::uuid)`, []any{account}},
+		{`DELETE FROM devices WHERE account_id = $1::uuid`, []any{account}},
+		{`DELETE FROM authorization_accounts WHERE account_id = $1::uuid`, []any{account}},
+		{`DELETE FROM accounts WHERE account_id = $1::uuid`, []any{account}},
 	}
 	for _, statement := range statements {
-		if _, err := f.db.ExecContext(ctx, statement, account); err != nil {
-			f.t.Errorf("clean up PostgreSQL integration fixture (%s): %v", statement, err)
+		if _, err := tx.ExecContext(ctx, statement.query, statement.args...); err != nil {
+			f.t.Errorf("clean up PostgreSQL integration fixture (%s): %v", statement.query, err)
+			return
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		f.t.Errorf("commit PostgreSQL integration fixture cleanup: %v", err)
 	}
 }
 
@@ -311,11 +335,28 @@ func TestPostgresCandidateEnrollmentRetryRejectsInconsistentEventEpochIntegratio
 		t.Fatalf("valid activation failed: %v", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	digest := sha256.Sum256(f.certificate.Raw)
-	_, err = db.ExecContext(ctx, `UPDATE authorization_events SET new_epoch = new_epoch + 1 WHERE auth_digest = $1`, digest[:])
-	cancel()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
+		t.Fatalf("begin privileged corruption fixture: %v", err)
+	}
+	// This regression case simulates out-of-band DBA/storage corruption. The
+	// ordinary event mutation path remains blocked by migration 0012.
+	if _, err := tx.ExecContext(ctx, `ALTER TABLE authorization_events DISABLE TRIGGER authorization_events_block_mutation_trg`); err != nil {
+		tx.Rollback()
+		t.Fatalf("temporarily disable event guard in test transaction: %v", err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE authorization_events SET new_epoch = new_epoch + 1 WHERE auth_digest = $1`, digest[:]); err != nil {
+		tx.Rollback()
 		t.Fatalf("corrupt event epoch for regression test: %v", err)
+	}
+	if _, err := tx.ExecContext(ctx, `ALTER TABLE authorization_events ENABLE TRIGGER authorization_events_block_mutation_trg`); err != nil {
+		tx.Rollback()
+		t.Fatalf("restore event guard after corruption fixture: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit privileged corruption fixture: %v", err)
 	}
 	if err := f.activate(proof); !errors.Is(err, ErrEnrollmentChallengeConsumed) {
 		t.Fatalf("retry with inconsistent event epoch: got %v, want ErrEnrollmentChallengeConsumed", err)
@@ -437,7 +478,7 @@ func TestPostgresCandidateEnrollmentInsertFailureRollsBackIntegration(t *testing
 	digest := sha256.Sum256(f.certificate.Raw)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	_, err = db.ExecContext(ctx, `INSERT INTO authorization_events
-(auth_digest, kind, account_id, old_epoch, new_epoch, target_device_id, cert_cbor)
+(auth_digest, kind, account_id, old_epoch, new_epoch, target_device_id, payload_cbor)
 VALUES ($1, 'TRANSITION', $2::uuid, 1, 1, $3::uuid, $4)`,
 		digest[:], uuidText(f.accountID), uuidText(f.deviceID), []byte("deliberate conflicting digest for rollback test"))
 	cancel()

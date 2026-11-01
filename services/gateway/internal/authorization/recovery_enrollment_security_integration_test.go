@@ -140,7 +140,7 @@ func TestPostgresRecoveryEnrollmentRollsBackAllWritesOnEventDigestConflictIntegr
 	conflictTarget := randomCandidateEnrollmentID(t)
 	if _, err := f.db.ExecContext(ctx, `
 INSERT INTO authorization_events (
-    auth_digest, kind, account_id, old_epoch, new_epoch, target_device_id, cert_cbor
+    auth_digest, kind, account_id, old_epoch, new_epoch, target_device_id, payload_cbor
 ) VALUES ($1, 'TRANSITION', $2::uuid, 2, 2, $3::uuid, $4)
 `, certificateDigest[:], uuidText(f.base.accountID), uuidText(conflictTarget), f.enrollmentRaw); err != nil {
 		t.Fatalf("insert intentional event-digest conflict: %v", err)

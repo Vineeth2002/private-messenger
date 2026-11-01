@@ -276,7 +276,7 @@ INSERT INTO authorization_devices (
 	}
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO authorization_events (
-    auth_digest, kind, account_id, old_epoch, new_epoch, target_device_id, cert_cbor
+    auth_digest, kind, account_id, old_epoch, new_epoch, target_device_id, payload_cbor
 ) VALUES ($1, 'ENROLL', $2::uuid, $3, $3, $4::uuid, $5)
 `, digest[:], uuidText(cert.AccountID), int64(cert.Epoch),
 		uuidText(cert.DeviceID), certificateRaw); err != nil {
@@ -425,7 +425,7 @@ SELECT EXISTS (
       AND e.kind = 'ENROLL'
       AND e.account_id = $2::uuid
       AND e.target_device_id = $3::uuid
-      AND e.cert_cbor = $4
+      AND e.payload_cbor = $4
       AND e.old_epoch = $6
       AND e.new_epoch = $6
       AND ad.enrollment_auth_digest = $1

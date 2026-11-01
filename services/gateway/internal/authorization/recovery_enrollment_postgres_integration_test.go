@@ -211,7 +211,7 @@ FROM device_enrollment_challenges WHERE challenge_id = $1::uuid
 	if err := f.db.QueryRowContext(ctx, `SELECT count(*) FROM authorization_devices WHERE account_id=$1::uuid AND device_id=$2::uuid AND status=1 AND authorized_epoch=2 AND revoked_epoch=0`, uuidText(f.base.accountID), uuidText(f.base.deviceID)).Scan(&authDevices); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.db.QueryRowContext(ctx, `SELECT count(*) FROM authorization_events WHERE account_id=$1::uuid AND target_device_id=$2::uuid AND kind='ENROLL' AND cert_cbor=$3`, uuidText(f.base.accountID), uuidText(f.base.deviceID), f.enrollmentRaw).Scan(&enrollmentEvents); err != nil {
+	if err := f.db.QueryRowContext(ctx, `SELECT count(*) FROM authorization_events WHERE account_id=$1::uuid AND target_device_id=$2::uuid AND kind='ENROLL' AND payload_cbor=$3`, uuidText(f.base.accountID), uuidText(f.base.deviceID), f.enrollmentRaw).Scan(&enrollmentEvents); err != nil {
 		t.Fatal(err)
 	}
 	var challengeConsumed bool

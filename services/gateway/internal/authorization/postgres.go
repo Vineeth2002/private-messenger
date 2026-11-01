@@ -114,7 +114,7 @@ func (a *PostgresAuthorizer) Transition(ctx context.Context, cert EpochTransitio
 	default:
 		return ErrInvalidAuthorization
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO authorization_events (auth_digest,kind,account_id,old_epoch,new_epoch,target_device_id,cert_cbor) VALUES ($1,'TRANSITION',$2,$3,$4,$5::uuid,$6)`, digest[:], uuidText(cert.AccountID), int64(cert.OldEpoch), int64(cert.NewEpoch), uuidText(cert.DeviceID), cert.Raw); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO authorization_events (auth_digest,kind,account_id,old_epoch,new_epoch,target_device_id,payload_cbor) VALUES ($1,'TRANSITION',$2,$3,$4,$5::uuid,$6)`, digest[:], uuidText(cert.AccountID), int64(cert.OldEpoch), int64(cert.NewEpoch), uuidText(cert.DeviceID), cert.Raw); err != nil {
 		return err
 	}
 	return tx.Commit()

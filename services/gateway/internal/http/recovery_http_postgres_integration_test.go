@@ -76,11 +76,14 @@ SELECT current_database(), COALESCE(host(inet_server_addr()), ''),
 		to_regclass('public.authorization_devices') IS NOT NULL AND
 		to_regclass('public.authorization_events') IS NOT NULL AND
 		to_regclass('public.device_enrollment_challenges') IS NOT NULL AND
-		to_regclass('public.account_recovery_requests') IS NOT NULL`).Scan(&schemaReady); err != nil {
+		to_regclass('public.account_recovery_requests') IS NOT NULL AND
+		EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = to_regclass('public.authorization_events') AND tgname = 'authorization_events_block_mutation_trg' AND NOT tgisinternal AND tgenabled = 'O') AND
+		EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = to_regclass('public.authorization_events') AND tgname = 'authorization_events_block_truncate_trg' AND NOT tgisinternal AND tgenabled = 'O') AND
+		EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = to_regclass('public.authorization_events') AND conname = 'authorization_events_kind_check' AND pg_get_constraintdef(oid) LIKE '%RECOVERY_FINALIZED%')`).Scan(&schemaReady); err != nil {
 		t.Fatalf("inspect recovery HTTP integration schema: %v", err)
 	}
 	if !schemaReady {
-		t.Fatal("recovery HTTP integration schema is incomplete; apply the gateway migrations through 0008 to the dedicated test database")
+		t.Fatal("recovery HTTP integration schema is incomplete; apply gateway migrations through 0012 to the dedicated test database")
 	}
 	return db
 }
@@ -177,7 +180,7 @@ VALUES ($1::uuid, $2::uuid, $3, $4, $5, 1, $6, 0)`, recoveryHTTPUUID(f.oldDevice
 		t.Fatalf("insert original authorization device: %v", err)
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO authorization_events
-(auth_digest, kind, account_id, old_epoch, new_epoch, target_device_id, cert_cbor)
+(auth_digest, kind, account_id, old_epoch, new_epoch, target_device_id, payload_cbor)
 VALUES ($1, 'ENROLL', $2::uuid, 1, 1, $3::uuid, $4)`, oldCertDigest[:], recoveryHTTPUUID(f.accountID), recoveryHTTPUUID(f.oldDeviceID), oldCertificate); err != nil {
 		t.Fatalf("insert original enrollment event: %v", err)
 	}
@@ -221,16 +224,27 @@ func (f *recoveryHTTPIntegrationFixture) cleanup() {
 		f.t.Errorf("restore recovery-request delete guard: %v", err)
 		return
 	}
-	for _, statement := range []string{
-		`DELETE FROM authorization_events WHERE account_id = $1::uuid`,
-		`DELETE FROM authorization_devices WHERE account_id = $1::uuid`,
-		`DELETE FROM device_certificates WHERE device_id IN (SELECT device_id FROM devices WHERE account_id = $1::uuid)`,
-		`DELETE FROM devices WHERE account_id = $1::uuid`,
-		`DELETE FROM authorization_accounts WHERE account_id = $1::uuid`,
-		`DELETE FROM accounts WHERE account_id = $1::uuid`,
-	} {
-		if _, err := tx.ExecContext(ctx, statement, account); err != nil {
-			f.t.Errorf("clean recovery HTTP fixture (%s): %v", statement, err)
+	// This is test-only owner cleanup of a random fixture in the explicitly
+	// named disposable database. Disable and restore event guards in this same
+	// transaction; rollback restores them if any cleanup statement fails.
+	statements := []struct {
+		query string
+		args  []any
+	}{
+		{`ALTER TABLE authorization_events DISABLE TRIGGER authorization_events_block_mutation_trg`, nil},
+		{`ALTER TABLE authorization_events DISABLE TRIGGER authorization_events_block_truncate_trg`, nil},
+		{`DELETE FROM authorization_events WHERE account_id = $1::uuid`, []any{account}},
+		{`ALTER TABLE authorization_events ENABLE TRIGGER authorization_events_block_mutation_trg`, nil},
+		{`ALTER TABLE authorization_events ENABLE TRIGGER authorization_events_block_truncate_trg`, nil},
+		{`DELETE FROM authorization_devices WHERE account_id = $1::uuid`, []any{account}},
+		{`DELETE FROM device_certificates WHERE device_id IN (SELECT device_id FROM devices WHERE account_id = $1::uuid)`, []any{account}},
+		{`DELETE FROM devices WHERE account_id = $1::uuid`, []any{account}},
+		{`DELETE FROM authorization_accounts WHERE account_id = $1::uuid`, []any{account}},
+		{`DELETE FROM accounts WHERE account_id = $1::uuid`, []any{account}},
+	}
+	for _, statement := range statements {
+		if _, err := tx.ExecContext(ctx, statement.query, statement.args...); err != nil {
+			f.t.Errorf("clean recovery HTTP fixture (%s): %v", statement.query, err)
 			return
 		}
 	}

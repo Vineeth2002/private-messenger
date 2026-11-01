@@ -188,7 +188,7 @@ func (a *PostgresAuthorizer) ActivateInitialAccountBootstrap(
 	if _, err = tx.ExecContext(ctx, `INSERT INTO authorization_devices(device_id,account_id,dsk_pub,ddhk_pub,status,authorized_epoch,enrollment_auth_digest,revoked_epoch) VALUES($1::uuid,$2::uuid,$3,$4,1,1,$5,0)`, uuidText(cert.DeviceID), uuidText(cert.AccountID), cert.DSKPub[:], cert.DDHKPub[:], digest[:]); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO authorization_events(auth_digest,kind,account_id,old_epoch,new_epoch,target_device_id,cert_cbor) VALUES($1,'ENROLL',$2::uuid,1,1,$3::uuid,$4)`, digest[:], uuidText(cert.AccountID), uuidText(cert.DeviceID), certificateRaw); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO authorization_events(auth_digest,kind,account_id,old_epoch,new_epoch,target_device_id,payload_cbor) VALUES($1,'ENROLL',$2::uuid,1,1,$3::uuid,$4)`, digest[:], uuidText(cert.AccountID), uuidText(cert.DeviceID), certificateRaw); err != nil {
 		return err
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE initial_account_bootstrap_challenges SET consumed_at=clock_timestamp() WHERE challenge_id=$1::uuid AND consumed_at IS NULL`, uuidText(proof.ChallengeID))
@@ -215,7 +215,7 @@ func initialAccountBootstrapAlreadyCommittedTx(ctx context.Context, tx *sql.Tx, 
       AND aa.epoch=1 AND aa.recovery_commitment=$3 AND aa.recovery_pub=$4 AND aa.status=1
       AND d.device_id=$5::uuid AND d.account_epoch=1 AND d.dsk_pub=$6 AND d.ddhk_pub=$7 AND d.revoked_at IS NULL
       AND ad.status=1 AND ad.authorized_epoch=1 AND ad.enrollment_auth_digest=$8 AND ad.dsk_pub=$6 AND ad.ddhk_pub=$7 AND ad.revoked_epoch=0
-      AND e.auth_digest=$8 AND e.kind='ENROLL' AND e.old_epoch=1 AND e.new_epoch=1 AND e.cert_cbor=$9
+      AND e.auth_digest=$8 AND e.kind='ENROLL' AND e.old_epoch=1 AND e.new_epoch=1 AND e.payload_cbor=$9
       AND EXISTS(SELECT 1 FROM device_certificates dc WHERE dc.device_id=d.device_id AND dc.cert_cbor=$9)
     )`, uuidText(cert.AccountID), "pm-"+uuidText(cert.AccountID), commitment[:], recoveryPub[:], uuidText(cert.DeviceID), cert.DSKPub[:], cert.DDHKPub[:], digest[:], cert.Raw).Scan(&ok)
 	return ok, err

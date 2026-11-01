@@ -302,7 +302,7 @@ INSERT INTO authorization_devices (
 	}
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO authorization_events (
-    auth_digest, kind, account_id, old_epoch, new_epoch, target_device_id, cert_cbor
+    auth_digest, kind, account_id, old_epoch, new_epoch, target_device_id, payload_cbor
 ) VALUES ($1, 'ENROLL', $2::uuid, $3, $3, $4::uuid, $5)
 `, certificateDigest[:], uuidText(cert.AccountID), int64(cert.Epoch),
 		uuidText(cert.DeviceID), certificateRaw); err != nil {

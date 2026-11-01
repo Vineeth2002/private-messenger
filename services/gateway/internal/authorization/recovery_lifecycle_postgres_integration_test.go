@@ -373,11 +373,47 @@ func TestPostgresFinalizeRecoveryRequiresDeadlineAndRevokesAllDevicesIntegration
 	if err := f.db.QueryRowContext(ctx, `SELECT count(*) FROM authorization_devices WHERE account_id=$1::uuid AND status=2 AND revoked_epoch=2`, uuidText(f.base.accountID)).Scan(&revokedCount); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.db.QueryRowContext(ctx, `SELECT count(*) FROM authorization_events WHERE auth_digest=$1 AND kind='TRANSITION' AND account_id=$2::uuid AND old_epoch=1 AND new_epoch=2 AND target_device_id=$3::uuid`, state.RequestDigest[:], uuidText(f.base.accountID), uuidText(f.base.deviceID)).Scan(&eventCount); err != nil {
+	if err := f.db.QueryRowContext(ctx, `SELECT count(*) FROM authorization_events WHERE auth_digest=$1 AND kind='RECOVERY_FINALIZED' AND account_id=$2::uuid AND old_epoch=1 AND new_epoch=2 AND target_device_id=$3::uuid`, state.RequestDigest[:], uuidText(f.base.accountID), uuidText(f.base.deviceID)).Scan(&eventCount); err != nil {
 		t.Fatal(err)
 	}
 	if activeCount != 0 || revokedCount != 2 || eventCount != 1 {
 		t.Fatalf("finalization side effects mismatch: active=%d revoked_at_epoch2=%d event=%d (device ids %s %s)", activeCount, revokedCount, eventCount, uuidText(device1), uuidText(device2))
+	}
+
+	// The append-only trigger must reject UPDATE, DELETE, and TRUNCATE attempts.
+	mutationAttempts := []struct {
+		name string
+		stmt string
+	}{
+		{
+			name: "update",
+			stmt: `UPDATE authorization_events SET payload_cbor = payload_cbor WHERE auth_digest = $1`,
+		},
+		{
+			name: "delete",
+			stmt: `DELETE FROM authorization_events WHERE auth_digest = $1`,
+		},
+		{
+			name: "truncate",
+			stmt: `TRUNCATE authorization_events`,
+		},
+	}
+	for _, attempt := range mutationAttempts {
+		var err error
+		if attempt.name == "truncate" {
+			_, err = f.db.ExecContext(ctx, attempt.stmt)
+		} else {
+			_, err = f.db.ExecContext(ctx, attempt.stmt, state.RequestDigest[:])
+		}
+		if err == nil {
+			t.Fatalf("authorization_events unexpectedly allowed %s", attempt.name)
+		}
+	}
+	if err := f.db.QueryRowContext(ctx, `SELECT count(*) FROM authorization_events WHERE auth_digest=$1`, state.RequestDigest[:]).Scan(&eventCount); err != nil {
+		t.Fatal(err)
+	}
+	if eventCount != 1 {
+		t.Fatalf("append-only check changed or removed finalization event: count=%d", eventCount)
 	}
 
 	restartedAuthorizer := NewPostgresAuthorizer(f.db)
