@@ -1,0 +1,73 @@
+name: gateway-go-validation
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gateway:
+    name: Gateway Go tests, PostgreSQL integration, and race detector
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    env:
+      PM_ENROLLMENT_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/pm_enrollment_test_20261030?sslmode=disable
+      CGO_ENABLED: "1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.6"
+          cache-dependency-path: services/gateway/go.sum
+
+      - name: Install and start local PostgreSQL 16
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential postgresql-16 postgresql-client-16
+          sudo pg_ctlcluster 16 main start
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -c "ALTER ROLE postgres WITH PASSWORD 'postgres';"
+          sudo -u postgres createdb pm_enrollment_test_20261030
+          pg_isready -h 127.0.0.1 -p 5432 -U postgres -d pm_enrollment_test_20261030
+
+      - name: Verify PostgreSQL connection
+        run: |
+          set -euo pipefail
+          psql "$PM_ENROLLMENT_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -c "
+            SELECT current_database(),
+                   host(inet_server_addr()),
+                   inet_server_port(),
+                   current_schema(),
+                   pg_is_in_recovery();
+          "
+
+      - name: Apply Gateway migrations 0001 through 0012
+        run: |
+          set -euo pipefail
+          for migration in services/gateway/migrations/*.sql; do
+            echo "Applying $migration"
+            psql "$PM_ENROLLMENT_TEST_DATABASE_URL" \
+              -v ON_ERROR_STOP=1 \
+              -f "$migration"
+          done
+
+      - name: Verify Go dependencies
+        working-directory: services/gateway
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Run Go vet
+        working-directory: services/gateway
+        run: go vet ./...
+
+      - name: Run all Gateway tests with race detector
+        working-directory: services/gateway
+        run: go test -race ./... -count=1
