@@ -70,4 +70,4 @@ jobs:
 
       - name: Run all Gateway tests with race detector
         working-directory: services/gateway
-        run: go test -race ./... -count=1
+        run: go test -race -v ./... -count=1
