@@ -24,7 +24,7 @@ import (
 
 const (
 	messageHTTPAuthTestDatabaseEnv  = "PM_ENROLLMENT_TEST_DATABASE_URL"
-	messageHTTPAuthTestDatabaseName = "pm_enrollment_test_20261030"
+	messageHTTPAuthTestDatabaseName = "pm_enrollment_bootstrap_it_20261104"
 )
 
 type messageHTTPAuthPostgresFixture struct {

@@ -426,6 +426,177 @@ func TestPostgresFinalizeRecoveryRequiresDeadlineAndRevokesAllDevicesIntegration
 	}
 }
 
+func TestPostgresFinalizeRecoveryCancellationRollsBackPartialWorkIntegration(t *testing.T) {
+	f := newRecoveryLifecycleFixture(t)
+	if _, err := f.begin(); err != nil {
+		t.Fatalf("begin recovery: %v", err)
+	}
+
+	deviceID, _ := f.addActiveDevice()
+	forceRecoveryDueForTest(t, f.db, f.recoveryRequestID)
+
+	// Hold the active authorization-device row so finalization blocks
+	// specifically at its first device-revocation UPDATE.
+	blocker, err := f.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("begin blocker transaction: %v", err)
+	}
+	defer blocker.Rollback()
+
+	var lockedDeviceID string
+	if err := blocker.QueryRowContext(context.Background(), `
+SELECT device_id::text
+FROM authorization_devices
+WHERE device_id = $1::uuid AND account_id = $2::uuid AND status = 1
+FOR UPDATE
+`, uuidText(deviceID), uuidText(f.base.accountID)).Scan(&lockedDeviceID); err != nil {
+		t.Fatalf("lock active authorization device: %v", err)
+	}
+
+	finalizeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	type finalizeResult struct {
+		err error
+	}
+	done := make(chan finalizeResult, 1)
+
+	go func() {
+		_, err := f.authorizer.FinalizeRecovery(
+			finalizeCtx,
+			f.base.accountID,
+			f.recoveryRequestID,
+		)
+		done <- finalizeResult{err: err}
+	}()
+
+	// Do not treat a timeout alone as proof that the intended UPDATE
+	// was blocked. Confirm the PostgreSQL backend is waiting on a lock
+	// while executing the authorization_devices UPDATE.
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	observeDeadline := time.NewTimer(2 * time.Second)
+	defer observeDeadline.Stop()
+
+	lockObserved := false
+	for !lockObserved {
+		select {
+		case result := <-done:
+			t.Fatalf("finalization returned before the expected device-row lock: %v", result.err)
+
+		case <-observeDeadline.C:
+			t.Fatal("finalization never appeared as a lock-waiting authorization_devices UPDATE")
+
+		case <-ticker.C:
+			queryCtx, queryCancel := context.WithTimeout(context.Background(), time.Second)
+			err := f.db.QueryRowContext(queryCtx, `
+SELECT EXISTS (
+    SELECT 1
+    FROM pg_stat_activity
+    WHERE datname = current_database()
+      AND state = 'active'
+      AND wait_event_type = 'Lock'
+      AND position('UPDATE authorization_devices' IN query) > 0
+)
+`).Scan(&lockObserved)
+			queryCancel()
+			if err != nil {
+				t.Fatalf("inspect PostgreSQL lock wait: %v", err)
+			}
+		}
+	}
+
+	// The finalizer must now be canceled while it is blocked.
+	result := <-done
+	if result.err == nil {
+		t.Fatal("finalization unexpectedly succeeded while its device update was blocked")
+	}
+	if !errors.Is(result.err, context.DeadlineExceeded) &&
+		!errors.Is(result.err, context.Canceled) {
+		t.Fatalf("finalization returned unexpected error after cancellation: %v", result.err)
+	}
+
+	// Release the row lock before inspecting persisted state.
+	if err := blocker.Rollback(); err != nil {
+		t.Fatalf("release blocker transaction: %v", err)
+	}
+
+	var recoveryStatus string
+	if err := f.db.QueryRowContext(context.Background(), `
+SELECT status
+FROM account_recovery_requests
+WHERE request_id = $1::uuid
+`, uuidText(f.recoveryRequestID)).Scan(&recoveryStatus); err != nil {
+		t.Fatalf("read recovery request status: %v", err)
+	}
+	if recoveryStatus != string(RecoveryRequestPending) {
+		t.Fatalf("recovery request status=%s; want PENDING after rollback", recoveryStatus)
+	}
+
+	var accountEpoch, authorizationEpoch int64
+	var authorizationStatus int
+	if err := f.db.QueryRowContext(context.Background(), `
+SELECT a.account_epoch, aa.epoch, aa.status
+FROM accounts a
+JOIN authorization_accounts aa ON aa.account_id = a.account_id
+WHERE a.account_id = $1::uuid
+`, uuidText(f.base.accountID)).Scan(
+		&accountEpoch,
+		&authorizationEpoch,
+		&authorizationStatus,
+	); err != nil {
+		t.Fatalf("read account authorization state: %v", err)
+	}
+	if accountEpoch != 1 ||
+		authorizationEpoch != 1 ||
+		authorizationStatus != int(AccountActive) {
+		t.Fatalf(
+			"account state changed despite rollback: account_epoch=%d authorization_epoch=%d status=%d",
+			accountEpoch, authorizationEpoch, authorizationStatus,
+		)
+	}
+
+	var deviceStatus int
+	var revokedEpoch int64
+	if err := f.db.QueryRowContext(context.Background(), `
+SELECT status, revoked_epoch
+FROM authorization_devices
+WHERE device_id = $1::uuid
+`, uuidText(deviceID)).Scan(&deviceStatus, &revokedEpoch); err != nil {
+		t.Fatalf("read authorization device state: %v", err)
+	}
+	if deviceStatus != 1 || revokedEpoch != 0 {
+		t.Fatalf("authorization device changed despite rollback: status=%d revoked_epoch=%d", deviceStatus, revokedEpoch)
+	}
+
+	var deviceEpoch int64
+	var revokedAt sql.NullTime
+	if err := f.db.QueryRowContext(context.Background(), `
+SELECT account_epoch, revoked_at
+FROM devices
+WHERE device_id = $1::uuid
+`, uuidText(deviceID)).Scan(&deviceEpoch, &revokedAt); err != nil {
+		t.Fatalf("read device directory state: %v", err)
+	}
+	if deviceEpoch != 1 || revokedAt.Valid {
+		t.Fatalf("device directory state changed despite rollback: epoch=%d revoked_at=%v", deviceEpoch, revokedAt)
+	}
+
+	var finalizedEventCount int64
+	if err := f.db.QueryRowContext(context.Background(), `
+SELECT count(*)
+FROM authorization_events
+WHERE account_id = $1::uuid
+  AND kind = 'RECOVERY_FINALIZED'
+`, uuidText(f.base.accountID)).Scan(&finalizedEventCount); err != nil {
+		t.Fatalf("count recovery finalization events: %v", err)
+	}
+	if finalizedEventCount != 0 {
+		t.Fatalf("found %d RECOVERY_FINALIZED events after canceled transaction; want 0", finalizedEventCount)
+	}
+}
+
 func TestPostgresAbortFinalizeRaceHasOneTerminalOutcomeIntegration(t *testing.T) {
 	f := newRecoveryLifecycleFixture(t)
 	if _, err := f.begin(); err != nil {

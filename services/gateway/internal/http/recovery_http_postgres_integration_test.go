@@ -25,7 +25,7 @@ import (
 
 const (
 	recoveryHTTPIntegrationDSNEnv = "PM_ENROLLMENT_TEST_DATABASE_URL"
-	recoveryHTTPIntegrationDBName = "pm_enrollment_test_20261030"
+	recoveryHTTPIntegrationDBName = "pm_enrollment_bootstrap_it_20261104"
 )
 
 // These tests use only the explicitly named local disposable PostgreSQL database.
