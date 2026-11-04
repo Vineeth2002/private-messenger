@@ -5,6 +5,7 @@
 //! leaves Rust; only the signed canonical certificate bytes cross UniFFI.
 
 use crate::cbor::{self, Value};
+use crate::x25519_validation::is_usable_x25519_public_key;
 use ed25519_dalek::{Signer, SigningKey};
 use thiserror::Error;
 
@@ -39,6 +40,10 @@ fn core_enrollment(
     dsk_pub: [u8; 32],
     ddhk_pub: [u8; 32],
 ) -> Result<Vec<u8>, AuthorizationV1Error> {
+    if !is_usable_x25519_public_key(&ddhk_pub) {
+        return Err(AuthorizationV1Error::InvalidField);
+    }
+
     cbor::encode_canonical(&Value::Map(vec![
         (Value::Int(1), Value::Int(PROTOCOL_VERSION as i128)),
         (Value::Int(2), Value::Bytes(account_id.to_vec())),
@@ -380,6 +385,7 @@ impl DeviceEnrollmentAuthorizationV1 {
             || device_id == [0; 16]
             || epoch == 0
             || epoch > LIFECYCLE_EPOCH_MAX
+            || !is_usable_x25519_public_key(&ddhk_pub)
         {
             return Err(AuthorizationV1Error::InvalidField);
         }
