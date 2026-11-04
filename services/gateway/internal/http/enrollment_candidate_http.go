@@ -177,6 +177,8 @@ func writeCandidateEnrollmentServiceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, authorization.ErrEnrollmentChallengeExpired):
 		writeCandidateEnrollmentError(w, http.StatusGone, "ERR_CHALLENGE_EXPIRED")
+	case errors.Is(err, authorization.ErrAccountAdoptionRequired):
+		writeCandidateEnrollmentError(w, http.StatusConflict, "ERR_ACCOUNT_ADOPTION_REQUIRED")
 	case errors.Is(err, authorization.ErrEnrollmentChallengeConsumed),
 		errors.Is(err, authorization.ErrDeviceExists),
 		errors.Is(err, authorization.ErrAuthorizationConflict):

@@ -45,9 +45,9 @@ func (a *PostgresAuthorizer) IssueCandidateEnrollmentChallenge(
 	}
 	defer tx.Rollback()
 
-	// ensureAccountTx locks the account row and its authorization row. It may
-	// initialize the authorization row only when the recovery key matches IRC.
-	account, err := a.ensureAccountTx(ctx, tx, cert.AccountID, recoveryPublicKey)
+	// Ordinary enrollment requires existing authorization state. A legacy account
+	// without it must complete explicit adoption before candidate enrollment.
+	account, err := a.lockExistingAuthorizedAccountTx(ctx, tx, cert.AccountID, recoveryPublicKey)
 	if err != nil {
 		return EnrollmentChallenge{}, err
 	}
@@ -363,6 +363,7 @@ FOR UPDATE
 	if err != nil {
 		return persistedAccount{}, err
 	}
+
 	if epoch < 1 || uint64(epoch) > LifecycleWireV1MaxEpoch || len(irc) != 32 {
 		return persistedAccount{}, ErrAuthorizationConflict
 	}

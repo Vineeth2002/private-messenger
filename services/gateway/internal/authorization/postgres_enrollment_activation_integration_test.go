@@ -19,7 +19,7 @@ import (
 )
 
 const candidateEnrollmentIntegrationDSNEnv = "PM_ENROLLMENT_TEST_DATABASE_URL"
-const candidateEnrollmentIntegrationDatabase = "pm_enrollment_test_20261030"
+const candidateEnrollmentIntegrationDatabase = "pm_enrollment_bootstrap_it_20261104"
 
 // These integration tests are intentionally opt-in and are restricted to the
 // explicitly named disposable database above. They never create or migrate a DB.
@@ -92,6 +92,33 @@ type candidateEnrollmentPGFixture struct {
 	recoveryPriv   ed25519.PrivateKey
 	dskPrivate     ed25519.PrivateKey
 	certificate    DeviceEnrollmentAuthorizationV1
+}
+
+func TestPostgresCandidateEnrollmentMissingAuthorizationRequiresAdoptionIntegration(t *testing.T) {
+	db := openCandidateEnrollmentIntegrationDB(t)
+	f := newCandidateEnrollmentPGFixture(t, db)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := db.ExecContext(ctx, `DELETE FROM authorization_accounts WHERE account_id=$1::uuid`, uuidText(f.accountID)); err != nil {
+		t.Fatalf("remove authorization row to model an unadopted legacy account: %v", err)
+	}
+
+	if _, err := f.issueChallenge(); !errors.Is(err, ErrAccountAdoptionRequired) {
+		t.Fatalf("issue challenge for legacy account without authorization state: got %v, want ErrAccountAdoptionRequired", err)
+	}
+
+	var authorizationRows, challengeRows int
+	if err := db.QueryRowContext(ctx, `
+SELECT
+    (SELECT count(*) FROM authorization_accounts WHERE account_id=$1::uuid),
+    (SELECT count(*) FROM device_enrollment_challenges WHERE account_id=$1::uuid)
+`, uuidText(f.accountID)).Scan(&authorizationRows, &challengeRows); err != nil {
+		t.Fatalf("inspect state after rejected legacy enrollment: %v", err)
+	}
+	if authorizationRows != 0 || challengeRows != 0 {
+		t.Fatalf("rejected legacy enrollment must persist no rows: authorization_accounts=%d challenges=%d", authorizationRows, challengeRows)
+	}
 }
 
 func newCandidateEnrollmentPGFixture(t *testing.T, db *sql.DB) *candidateEnrollmentPGFixture {
