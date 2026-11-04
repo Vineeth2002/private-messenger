@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 25
 
     env:
-      PM_ENROLLMENT_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/pm_enrollment_test_20261030?sslmode=disable
+      PM_ENROLLMENT_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/pm_enrollment_bootstrap_it_20261104?sslmode=disable
       CGO_ENABLED: "1"
 
     steps:
@@ -34,8 +34,8 @@ jobs:
           sudo apt-get install -y build-essential postgresql-16 postgresql-client-16
           sudo pg_ctlcluster 16 main start
           sudo -u postgres psql -v ON_ERROR_STOP=1 -c "ALTER ROLE postgres WITH PASSWORD 'postgres';"
-          sudo -u postgres createdb pm_enrollment_test_20261030
-          pg_isready -h 127.0.0.1 -p 5432 -U postgres -d pm_enrollment_test_20261030
+          sudo -u postgres createdb pm_enrollment_bootstrap_it_20261104
+          pg_isready -h 127.0.0.1 -p 5432 -U postgres -d pm_enrollment_bootstrap_it_20261104
 
       - name: Verify PostgreSQL connection
         run: |
