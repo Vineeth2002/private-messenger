@@ -21,9 +21,9 @@
 use std::collections::BTreeMap;
 
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
-use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
 
 use crate::cbor::{self, Value};
+use crate::x25519_validation::is_usable_x25519_public_key;
 
 pub const SIGNED_PREKEY_V1_DOMAIN: &[u8] = b"PM-V1-SIGNED-PREKEY-v1";
 pub const SIGNED_PREKEY_V1_VERSION: u64 = 1;
@@ -195,14 +195,6 @@ fn validate_fields(
     Ok(())
 }
 
-/// X25519 low-order public keys produce an all-zero shared secret for every
-/// scalar. A fixed, non-zero scalar is sufficient to reject those points here.
-fn is_usable_x25519_public_key(public: &[u8; 32]) -> bool {
-    let private = StaticSecret::from([0x42u8; 32]);
-    let public = X25519PublicKey::from(*public);
-    private.diffie_hellman(&public).was_contributory()
-}
-
 fn core_value(
     account_id: &[u8; 16],
     epoch: u64,
@@ -273,6 +265,7 @@ impl MapPairs for Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
 
     fn valid_spk_pub() -> [u8; 32] {
         let secret = StaticSecret::from([0x22u8; 32]);

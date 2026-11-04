@@ -45,3 +45,6 @@ pub use ffi::{
 uniffi::include_scaffolding!("pm_crypto_core");
 
 pub mod signed_prekey_v1;
+
+#[deny(unsafe_code)]
+mod x25519_validation;
