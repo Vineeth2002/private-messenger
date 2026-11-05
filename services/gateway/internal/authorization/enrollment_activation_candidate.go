@@ -45,9 +45,9 @@ func (a *PostgresAuthorizer) IssueCandidateEnrollmentChallenge(
 	}
 	defer tx.Rollback()
 
-	// Ordinary enrollment requires existing authorization state. A legacy account
-	// without it must complete explicit adoption before candidate enrollment.
-	account, err := a.lockExistingAuthorizedAccountTx(ctx, tx, cert.AccountID, recoveryPublicKey)
+	// ensureAccountTx locks the account row and its authorization row. It may
+	// initialize the authorization row only when the recovery key matches IRC.
+	account, err := a.ensureAccountTx(ctx, tx, cert.AccountID, recoveryPublicKey)
 	if err != nil {
 		return EnrollmentChallenge{}, err
 	}
@@ -276,7 +276,7 @@ INSERT INTO authorization_devices (
 	}
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO authorization_events (
-    auth_digest, kind, account_id, old_epoch, new_epoch, target_device_id, payload_cbor
+    auth_digest, kind, account_id, old_epoch, new_epoch, target_device_id, cert_cbor
 ) VALUES ($1, 'ENROLL', $2::uuid, $3, $3, $4::uuid, $5)
 `, digest[:], uuidText(cert.AccountID), int64(cert.Epoch),
 		uuidText(cert.DeviceID), certificateRaw); err != nil {
@@ -363,7 +363,6 @@ FOR UPDATE
 	if err != nil {
 		return persistedAccount{}, err
 	}
-
 	if epoch < 1 || uint64(epoch) > LifecycleWireV1MaxEpoch || len(irc) != 32 {
 		return persistedAccount{}, ErrAuthorizationConflict
 	}
@@ -426,7 +425,7 @@ SELECT EXISTS (
       AND e.kind = 'ENROLL'
       AND e.account_id = $2::uuid
       AND e.target_device_id = $3::uuid
-      AND e.payload_cbor = $4
+      AND e.cert_cbor = $4
       AND e.old_epoch = $6
       AND e.new_epoch = $6
       AND ad.enrollment_auth_digest = $1
