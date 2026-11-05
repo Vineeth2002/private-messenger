@@ -21,7 +21,7 @@ import (
 
 const (
 	requestAuthIntegrationDSNEnv = "PM_ENROLLMENT_TEST_DATABASE_URL"
-	requestAuthIntegrationDBName = "pm_enrollment_bootstrap_it_20261104"
+	requestAuthIntegrationDBName = "pm_enrollment_test_20261030"
 )
 
 // PostgreSQL auth integration tests are opt-in and restricted to the same
