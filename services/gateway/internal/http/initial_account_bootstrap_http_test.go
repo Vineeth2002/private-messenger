@@ -26,7 +26,7 @@ func (s *initialBootstrapServiceStub) IssueInitialAccountBootstrapChallenge(_ co
 	for i := range c.Nonce {
 		c.Nonce[i] = byte(i + 2)
 	}
-	c.ExpiresAt = time.Date(2026, 11, 1, 1, 0, 0, 0, time.UTC)
+	c.ExpiresAt = time.Now().UTC().Add(5 * time.Minute)
 	return c, nil
 }
 func (s *initialBootstrapServiceStub) ActivateInitialAccountBootstrap(_ context.Context, cert, proof []byte, key [32]byte) error {
@@ -53,6 +53,10 @@ func TestInitialAccountBootstrapChallengeRoute(t *testing.T) {
 	}
 	if len(got.ChallengeIDHex) != 32 || len(got.ChallengeNonceHex) != 64 || got.ExpiresAt == "" {
 		t.Fatalf("bad response: %+v", got)
+	}
+	expiresAt, err := time.Parse(time.RFC3339Nano, got.ExpiresAt)
+	if err != nil || !expiresAt.After(time.Now()) {
+		t.Fatalf("challenge expiry is invalid or not in the future: %q", got.ExpiresAt)
 	}
 	if rec.Header().Get("Cache-Control") != "no-store" {
 		t.Fatal("missing no-store")

@@ -526,9 +526,9 @@ func (a *PostgresAuthorizer) FinalizeRecovery(
 		err := tx.QueryRowContext(ctx, `
 SELECT EXISTS (
     SELECT 1 FROM authorization_events
-    WHERE auth_digest = $1 AND kind = 'TRANSITION'
+    WHERE auth_digest = $1 AND kind = 'RECOVERY_FINALIZED'
       AND account_id = $2::uuid AND old_epoch = $3 AND new_epoch = $4
-      AND target_device_id = $5::uuid AND cert_cbor = $6
+      AND target_device_id = $5::uuid AND payload_cbor = $6
 )
 `, row.state.RequestDigest[:], uuidText(accountID), int64(request.OldEpoch),
 			int64(request.NewEpoch), uuidText(request.TargetDeviceID), row.raw).Scan(&eventMatches)
@@ -613,8 +613,8 @@ WHERE account_id = $1::uuid AND epoch = $3 AND status = 1
 	}
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO authorization_events (
-    auth_digest, kind, account_id, old_epoch, new_epoch, target_device_id, cert_cbor
-) VALUES ($1, 'TRANSITION', $2::uuid, $3, $4, $5::uuid, $6)
+    auth_digest, kind, account_id, old_epoch, new_epoch, target_device_id, payload_cbor
+) VALUES ($1, 'RECOVERY_FINALIZED', $2::uuid, $3, $4, $5::uuid, $6)
 `, row.state.RequestDigest[:], uuidText(accountID), int64(request.OldEpoch),
 		int64(request.NewEpoch), uuidText(request.TargetDeviceID), row.raw); err != nil {
 		return RecoveryRequestState{}, err
