@@ -34,7 +34,7 @@ fn state_from(v: &J, name: &str) -> RatchetState {
     let s = &v["scenario"][name];
     RatchetState {
         rk: Zeroizing::new(arr::<32>(s["rk"].as_str().unwrap())),
-        dhs_priv: Zeroizing::new(arr::<32>(s["dhs_priv"].as_str().unwrap())),
+        dhs_priv: x25519_dalek::StaticSecret::from(arr::<32>(s["dhs_priv"].as_str().unwrap())),
         dhs_pub: arr::<32>(s["dhs_pub"].as_str().unwrap()),
         dhr_pub: s["dhr_pub"].as_str().map(arr::<32>),
         ck_s: s["ck_s"].as_str().map(|x| Zeroizing::new(arr::<32>(x))),
@@ -99,7 +99,7 @@ fn state_snapshot(
 ) {
     (
         *state.rk,
-        *state.dhs_priv,
+        state.dhs_priv.to_bytes(),
         state.dhs_pub,
         state.dhr_pub,
         state.ck_s.as_ref().map(|v| **v),
