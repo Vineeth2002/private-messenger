@@ -23,7 +23,7 @@ use x25519_dalek::{PublicKey, StaticSecret};
 use zeroize::Zeroizing;
 
 use super::{
-    aad_msg, cbor, dh_bytes, kdf_ck, kdf_rk, MessageEnvelopeRef, RatchetError, RatchetKey,
+    aad_msg, cbor, dh_shared_secret, kdf_ck, kdf_rk, MessageEnvelopeRef, RatchetError, RatchetKey,
     RatchetState, SkippedMessageKeyId, Value, MAX_SKIP, MAX_SKIPPED_MESSAGE_KEYS,
     ZERO_MESSAGE_NONCE,
 };
@@ -184,7 +184,7 @@ fn derive_skipped_range(
 ) -> Result<
     (
         Zeroizing<RatchetKey>,
-        Vec<(SkippedMessageKeyId, RatchetKey)>,
+        Vec<(SkippedMessageKeyId, Zeroizing<RatchetKey>)>,
     ),
     RatchetError,
 > {
@@ -205,7 +205,7 @@ fn derive_skipped_range(
                 ratchet_public,
                 sequence_number: n,
             },
-            *k_msg,
+            k_msg,
         ));
         ck = ck_next;
     }
@@ -221,7 +221,7 @@ fn derive_target_message_key(
     (
         Zeroizing<RatchetKey>,
         Zeroizing<RatchetKey>,
-        Vec<(SkippedMessageKeyId, RatchetKey)>,
+        Vec<(SkippedMessageKeyId, Zeroizing<RatchetKey>)>,
     ),
     RatchetError,
 > {
@@ -269,7 +269,7 @@ fn decrypt_with_key(
 
 fn commit_skipped_keys(
     state: &mut RatchetState,
-    skipped: &[(SkippedMessageKeyId, RatchetKey)],
+    skipped: Vec<(SkippedMessageKeyId, Zeroizing<RatchetKey>)>,
 ) -> Result<(), RatchetError> {
     if skipped
         .iter()
@@ -278,7 +278,7 @@ fn commit_skipped_keys(
         return Err(RatchetError::InvalidInitialState);
     }
     for (id, key) in skipped {
-        state.skipped_keys.insert(*id, Zeroizing::new(*key));
+        state.skipped_keys.insert(id, key);
     }
     Ok(())
 }
@@ -295,10 +295,9 @@ fn decrypt_skipped_message(
     let k_msg = state
         .skipped_keys
         .get(&id)
-        .map(|key| **key)
         .ok_or(RatchetError::ReplayDetected)?;
 
-    let plaintext = decrypt_with_key(&envelope, envelope.ratchet_header_bytes, &k_msg)?;
+    let plaintext = decrypt_with_key(&envelope, envelope.ratchet_header_bytes, k_msg)?;
     state.skipped_keys.remove(&id);
     Ok(plaintext)
 }
@@ -347,7 +346,7 @@ pub fn decrypt_message(
         )?;
         let plaintext = decrypt_with_key(&envelope, envelope.ratchet_header_bytes, &k_msg)?;
 
-        commit_skipped_keys(state, &skipped)?;
+        commit_skipped_keys(state, skipped)?;
         state.ck_r = Some(ck_after);
         state.nr = header
             .sequence_number
@@ -368,13 +367,26 @@ pub fn decrypt_new_ratchet_message(
     envelope: MessageEnvelopeRef<'_>,
 ) -> Result<Vec<u8>, RatchetError> {
     let new_dhs = StaticSecret::random_from_rng(OsRng);
-    decrypt_new_ratchet_message_inner(state, envelope, new_dhs.to_bytes())
+    decrypt_new_ratchet_message_with_secret(state, envelope, new_dhs)
 }
 
+#[cfg(test)]
 fn decrypt_new_ratchet_message_inner(
     state: &mut RatchetState,
     envelope: MessageEnvelopeRef<'_>,
     new_dhs_priv: RatchetKey,
+) -> Result<Vec<u8>, RatchetError> {
+    decrypt_new_ratchet_message_with_secret(
+        state,
+        envelope,
+        StaticSecret::from(new_dhs_priv),
+    )
+}
+
+fn decrypt_new_ratchet_message_with_secret(
+    state: &mut RatchetState,
+    envelope: MessageEnvelopeRef<'_>,
+    new_dhs: StaticSecret,
 ) -> Result<Vec<u8>, RatchetError> {
     validate_normal_envelope(&envelope)?;
     let header = NormalMessageHeader::decode(envelope.ratchet_header_bytes)?;
@@ -413,19 +425,19 @@ fn decrypt_new_ratchet_message_inner(
         skipped
     };
 
-    let dh_recv = dh_bytes(&state.dhs_priv, &header.ratchet_public)?;
-    let (rk_temp, ck_r_initial) = kdf_rk(&state.rk, &dh_recv);
+    let dh_recv = dh_shared_secret(&state.dhs_priv, &header.ratchet_public)?;
+    let (rk_temp, ck_r_initial) = kdf_rk(&state.rk, dh_recv.as_bytes());
 
-    let new_dhs = StaticSecret::from(new_dhs_priv);
+
     let new_dh_out = {
         let peer = PublicKey::from(header.ratchet_public);
         let shared = new_dhs.diffie_hellman(&peer);
         if !shared.was_contributory() {
             return Err(RatchetError::NonContributoryDh);
         }
-        *shared.as_bytes()
+        shared
     };
-    let (rk_final, ck_s) = kdf_rk(&rk_temp, &new_dh_out);
+    let (rk_final, ck_s) = kdf_rk(&rk_temp, new_dh_out.as_bytes());
 
     let (ck_r_after, k_msg, new_skipped) = derive_target_message_key(
         &ck_r_initial,
@@ -439,11 +451,12 @@ fn decrypt_new_ratchet_message_inner(
 
     let plaintext = decrypt_with_key(&envelope, envelope.ratchet_header_bytes, &k_msg)?;
 
-    commit_skipped_keys(state, &skipped)?;
+    commit_skipped_keys(state, skipped)?;
 
+    let new_dhs_pub = PublicKey::from(&new_dhs).to_bytes();
     state.rk = rk_final;
-    state.dhs_priv = Zeroizing::new(new_dhs_priv);
-    state.dhs_pub = PublicKey::from(&new_dhs).to_bytes();
+    state.dhs_priv = new_dhs;
+    state.dhs_pub = new_dhs_pub;
     state.dhr_pub = Some(header.ratchet_public);
     state.ck_s = Some(ck_s);
     state.ck_r = Some(ck_r_after);
@@ -514,7 +527,7 @@ mod tests {
     ) {
         (
             *state.rk,
-            *state.dhs_priv,
+            state.dhs_priv.to_bytes(),
             state.dhs_pub,
             state.dhr_pub,
             state.ck_s.as_ref().map(|v| **v),
@@ -595,7 +608,7 @@ mod tests {
             ratchet_header_bytes: &header_bytes,
             ciphertext: &ciphertext,
         };
-        let mut bob = RatchetState::init_bob(&sk, spk_priv);
+        let mut bob = RatchetState::init_bob_from_test_bytes(&sk, spk_priv);
         super::super::ingest_message_0_inner(&mut bob, env, 7, Some(42), dhs_b1_priv).unwrap();
         bob
     }
@@ -684,7 +697,7 @@ mod tests {
         assert_eq!(bob.ns, 2);
 
         let sk = arr::<32>(load()["sk"].as_str().unwrap());
-        let mut alice = RatchetState::init_alice(
+        let mut alice = RatchetState::init_alice_from_test_bytes(
             &sk,
             &arr::<32>("ec8c415e81fc6095efe84f8c418d7387acea1cd8faad6f48dc2d7f486c9ecb57"),
             arr::<32>(load()["alice"]["dhs_a0_priv"].as_str().unwrap()),
@@ -801,7 +814,7 @@ mod tests {
         let mut alice = {
             let v = load();
             let sk = arr::<32>(v["sk"].as_str().unwrap());
-            let mut state = RatchetState::init_alice(
+            let mut state = RatchetState::init_alice_from_test_bytes(
                 &sk,
                 &arr::<32>("ec8c415e81fc6095efe84f8c418d7387acea1cd8faad6f48dc2d7f486c9ecb57"),
                 arr::<32>(v["alice"]["dhs_a0_priv"].as_str().unwrap()),

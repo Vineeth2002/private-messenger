@@ -25,7 +25,7 @@ use hmac::{Hmac, Mac};
 use rand_core::OsRng;
 use sha2::Sha256;
 use thiserror::Error;
-use x25519_dalek::{PublicKey, StaticSecret};
+use x25519_dalek::{PublicKey, SharedSecret, StaticSecret};
 use zeroize::Zeroizing;
 
 use crate::cbor::{self, CborError, Value};
@@ -256,7 +256,7 @@ fn u64_value(v: Value) -> Result<u64, RatchetError> {
 /// mutated only after Message 0 authentication succeeds on the Bob path.
 pub struct RatchetState {
     rk: Zeroizing<RatchetKey>,
-    dhs_priv: Zeroizing<RatchetKey>,
+    dhs_priv: StaticSecret,
     dhs_pub: [u8; 32],
     dhr_pub: Option<[u8; 32]>,
     ck_s: Option<Zeroizing<RatchetKey>>,
@@ -269,25 +269,26 @@ pub struct RatchetState {
 
 impl RatchetState {
     /// Alice initialization from the X3DH session key and Bob's signed-prekey public key.
-    /// `dhs_a0_priv` is supplied by the caller here; a later client integration boundary
-    /// will generate it from the platform RNG.
+    /// The native caller transfers ownership of the private key as a StaticSecret.
     pub fn init_alice(
         sk: &RatchetKey,
         spk_b_pub: &[u8; 32],
-        dhs_a0_priv: RatchetKey,
+        dhs_a0_priv: StaticSecret,
     ) -> Result<Self, RatchetError> {
-        let dhs = StaticSecret::from(dhs_a0_priv);
         let dhr = PublicKey::from(*spk_b_pub);
-        let dh = dhs.diffie_hellman(&dhr);
+        let dh = dhs_a0_priv.diffie_hellman(&dhr);
+
         if !dh.was_contributory() {
             return Err(RatchetError::NonContributoryDh);
         }
-        let dh_out = *dh.as_bytes();
-        let (rk, ck_s) = kdf_rk(sk, &dh_out);
+
+        let (rk, ck_s) = kdf_rk(sk, dh.as_bytes());
+        let dhs_pub = PublicKey::from(&dhs_a0_priv).to_bytes();
+
         Ok(Self {
             rk,
-            dhs_priv: Zeroizing::new(dhs_a0_priv),
-            dhs_pub: PublicKey::from(&dhs).to_bytes(),
+            dhs_priv: dhs_a0_priv,
+            dhs_pub,
             dhr_pub: Some(*spk_b_pub),
             ck_s: Some(ck_s),
             ck_r: None,
@@ -298,13 +299,15 @@ impl RatchetState {
         })
     }
 
-    /// Bob's pre-ingestion state: DHS_B is the signed-prekey private key.
-    pub fn init_bob(sk: &RatchetKey, spk_b_priv: RatchetKey) -> Self {
-        let spk = StaticSecret::from(spk_b_priv);
+    /// Bob's pre-ingestion state. Ownership of the signed-prekey secret
+    /// transfers directly into the native ratchet state.
+    pub fn init_bob(sk: &RatchetKey, spk_b_priv: StaticSecret) -> Self {
+        let dhs_pub = PublicKey::from(&spk_b_priv).to_bytes();
+
         Self {
             rk: Zeroizing::new(*sk),
-            dhs_priv: Zeroizing::new(spk_b_priv),
-            dhs_pub: PublicKey::from(&spk).to_bytes(),
+            dhs_priv: spk_b_priv,
+            dhs_pub,
             dhr_pub: None,
             ck_s: None,
             ck_r: None,
@@ -313,6 +316,29 @@ impl RatchetState {
             pn: 0,
             skipped_keys: BTreeMap::new(),
         }
+    }
+
+    /// Deterministic byte-array adapter for test vectors only.
+    #[cfg(test)]
+    pub(crate) fn init_alice_from_test_bytes(
+        sk: &RatchetKey,
+        spk_b_pub: &[u8; 32],
+        dhs_a0_priv: RatchetKey,
+    ) -> Result<Self, RatchetError> {
+        Self::init_alice(
+            sk,
+            spk_b_pub,
+            StaticSecret::from(dhs_a0_priv),
+        )
+    }
+
+    /// Deterministic byte-array adapter for test vectors only.
+    #[cfg(test)]
+    pub(crate) fn init_bob_from_test_bytes(
+        sk: &RatchetKey,
+        spk_b_priv: RatchetKey,
+    ) -> Self {
+        Self::init_bob(sk, StaticSecret::from(spk_b_priv))
     }
 }
 
@@ -388,14 +414,18 @@ pub fn aad_msg(
     aad
 }
 
-fn dh_bytes(priv_bytes: &[u8; 32], peer_pub: &[u8; 32]) -> Result<RatchetKey, RatchetError> {
-    let secret = StaticSecret::from(*priv_bytes);
+fn dh_shared_secret(
+    secret: &StaticSecret,
+    peer_pub: &[u8; 32],
+) -> Result<SharedSecret, RatchetError> {
     let peer = PublicKey::from(*peer_pub);
-    let dh = secret.diffie_hellman(&peer);
-    if !dh.was_contributory() {
+    let shared = secret.diffie_hellman(&peer);
+
+    if !shared.was_contributory() {
         return Err(RatchetError::NonContributoryDh);
     }
-    Ok(*dh.as_bytes())
+
+    Ok(shared)
 }
 
 fn initial_state(state: &RatchetState) -> bool {
@@ -429,8 +459,8 @@ pub fn receive_first_dh_ratchet(
         return Err(RatchetError::InvalidInitialState);
     }
 
-    let dh_out = dh_bytes(&state.dhs_priv, &peer_ratchet_pub)?;
-    let (rk_next, ck_r) = kdf_rk(&state.rk, &dh_out);
+    let dh_out = dh_shared_secret(&state.dhs_priv, &peer_ratchet_pub)?;
+    let (rk_next, ck_r) = kdf_rk(&state.rk, dh_out.as_bytes());
 
     // Commit only after the contributory DH and KDF have succeeded.
     state.rk = rk_next;
@@ -492,12 +522,29 @@ pub fn encrypt_message_0(
     Ok((header_bytes, ciphertext))
 }
 
+#[cfg(test)]
 fn ingest_message_0_inner(
     state: &mut RatchetState,
     envelope: MessageEnvelopeRef<'_>,
     expected_spk_id: u32,
     expected_opk_id: Option<u32>,
     dhs_b1_priv: RatchetKey,
+) -> Result<Vec<u8>, RatchetError> {
+    ingest_message_0_with_secret(
+        state,
+        envelope,
+        expected_spk_id,
+        expected_opk_id,
+        StaticSecret::from(dhs_b1_priv),
+    )
+}
+
+fn ingest_message_0_with_secret(
+    state: &mut RatchetState,
+    envelope: MessageEnvelopeRef<'_>,
+    expected_spk_id: u32,
+    expected_opk_id: Option<u32>,
+    dhs_b1: StaticSecret,
 ) -> Result<Vec<u8>, RatchetError> {
     if !initial_state(state) {
         return Err(RatchetError::InvalidInitialState);
@@ -524,21 +571,21 @@ fn ingest_message_0_inner(
 
     // Step 1: temporary DH with Bob's current signed-prekey private key.
     let rk_b = &state.rk;
-    let dh1 = dh_bytes(&state.dhs_priv, &header.initial_ratchet_pub)?;
-    let (rk_temp, ck_r) = kdf_rk(rk_b, &dh1);
+    let dh1 = dh_shared_secret(&state.dhs_priv, &header.initial_ratchet_pub)?;
+    let (rk_temp, ck_r) = kdf_rk(rk_b, dh1.as_bytes());
 
     // Step 2: generate a new Bob DH ratchet key. The old SPK private key is retired
     // only after successful authentication of Message 0.
-    let dhs_b1 = StaticSecret::from(dhs_b1_priv);
+
     let dh2 = {
         let peer = PublicKey::from(header.initial_ratchet_pub);
         let shared = dhs_b1.diffie_hellman(&peer);
         if !shared.was_contributory() {
             return Err(RatchetError::NonContributoryDh);
         }
-        *shared.as_bytes()
+        shared
     };
-    let (rk_final, ck_s) = kdf_rk(&rk_temp, &dh2);
+    let (rk_final, ck_s) = kdf_rk(&rk_temp, dh2.as_bytes());
 
     // Step 3: derive the first receiving message key and authenticate/decrypt.
     let (ck_r_after, k_msg) = kdf_ck(&ck_r);
@@ -564,9 +611,10 @@ fn ingest_message_0_inner(
         .map_err(|_| RatchetError::AeadAuthFailure)?;
 
     // Step 4: atomic commit ONLY after authentication succeeds.
+    let dhs_b1_pub = PublicKey::from(&dhs_b1).to_bytes();
     state.rk = rk_final;
-    state.dhs_priv = Zeroizing::new(dhs_b1_priv);
-    state.dhs_pub = PublicKey::from(&dhs_b1).to_bytes();
+    state.dhs_priv = dhs_b1;
+    state.dhs_pub = dhs_b1_pub;
     state.dhr_pub = Some(header.initial_ratchet_pub);
     state.ck_s = Some(ck_s);
     state.ck_r = Some(ck_r_after);
@@ -584,12 +632,12 @@ pub fn ingest_message_0(
     expected_opk_id: Option<u32>,
 ) -> Result<Vec<u8>, RatchetError> {
     let dhs_b1 = StaticSecret::random_from_rng(OsRng);
-    ingest_message_0_inner(
+    ingest_message_0_with_secret(
         state,
         envelope,
         expected_spk_id,
         expected_opk_id,
-        dhs_b1.to_bytes(),
+        dhs_b1,
     )
 }
 
@@ -711,7 +759,7 @@ mod tests {
         let sk = arr::<32>(v["sk"].as_str().unwrap());
         let spk_b_pub = arr::<32>(case["inputs"]["spk_b_pub"].as_str().unwrap());
         let dhs_a0_priv = arr::<32>(v["alice"]["dhs_a0_priv"].as_str().unwrap());
-        let mut alice = RatchetState::init_alice(&sk, &spk_b_pub, dhs_a0_priv).unwrap();
+        let mut alice = RatchetState::init_alice_from_test_bytes(&sk, &spk_b_pub, dhs_a0_priv).unwrap();
         assert_eq!(hex_encode(&alice.rk), v["alice"]["rk_a"]);
         assert_eq!(
             hex_encode(alice.ck_s.as_ref().unwrap()),
@@ -783,7 +831,7 @@ mod tests {
             ratchet_header_bytes: &header_bytes,
             ciphertext: &ciphertext,
         };
-        let mut bob = RatchetState::init_bob(&sk, spk_priv);
+        let mut bob = RatchetState::init_bob_from_test_bytes(&sk, spk_priv);
         assert_eq!(hex_encode(&bob.rk), v["bob"]["pre_ingestion_state"]["rk_b"]);
         assert_eq!(hex_encode(bob.dhs_pub), case["inputs"]["spk_b_pub"]);
         let plaintext = ingest_message_0_inner(&mut bob, env, 7, Some(42), dhs_b1_priv).unwrap();
@@ -823,7 +871,7 @@ mod tests {
     ) {
         (
             *state.rk,
-            *state.dhs_priv,
+            state.dhs_priv.to_bytes(),
             state.dhs_pub,
             state.dhr_pub,
             state.ck_s.as_ref().map(|v| **v),
@@ -844,7 +892,7 @@ mod tests {
         let spk_b_pub =
             arr::<32>("ec8c415e81fc6095efe84f8c418d7387acea1cd8faad6f48dc2d7f486c9ecb57");
 
-        let mut state = RatchetState::init_alice(
+        let mut state = RatchetState::init_alice_from_test_bytes(
             &sk,
             &spk_b_pub,
             arr::<32>(alice["dhs_a0_priv"].as_str().unwrap()),
@@ -875,7 +923,7 @@ mod tests {
         let alice = &v["alice"];
         let spk_b_pub =
             arr::<32>("ec8c415e81fc6095efe84f8c418d7387acea1cd8faad6f48dc2d7f486c9ecb57");
-        let mut state = RatchetState::init_alice(
+        let mut state = RatchetState::init_alice_from_test_bytes(
             &sk,
             &spk_b_pub,
             arr::<32>(alice["dhs_a0_priv"].as_str().unwrap()),
@@ -916,7 +964,7 @@ mod tests {
             arr::<32>("ec8c415e81fc6095efe84f8c418d7387acea1cd8faad6f48dc2d7f486c9ecb57");
         let bob_dhs_b1_pub = arr::<32>(v["bob"]["dhs_b1_pub"].as_str().unwrap());
 
-        let mut alice_before_message0 = RatchetState::init_alice(
+        let mut alice_before_message0 = RatchetState::init_alice_from_test_bytes(
             &sk,
             &spk_b_pub,
             arr::<32>(alice["dhs_a0_priv"].as_str().unwrap()),
@@ -930,7 +978,7 @@ mod tests {
         assert_eq!(state_snapshot(&alice_before_message0), before_alice);
 
         let spk_b_priv = arr::<32>(x["cases"][0]["inputs"]["spk_b_priv"].as_str().unwrap());
-        let mut bob_before_message0 = RatchetState::init_bob(&sk, spk_b_priv);
+        let mut bob_before_message0 = RatchetState::init_bob_from_test_bytes(&sk, spk_b_priv);
         let before_bob = state_snapshot(&bob_before_message0);
         assert_eq!(
             receive_first_dh_ratchet(&mut bob_before_message0, bob_dhs_b1_pub).unwrap_err(),
@@ -948,7 +996,7 @@ mod tests {
             arr::<32>("ec8c415e81fc6095efe84f8c418d7387acea1cd8faad6f48dc2d7f486c9ecb57");
         let bob_dhs_b1_pub = arr::<32>(v["bob"]["dhs_b1_pub"].as_str().unwrap());
         let make_alice_after_message0 = || {
-            let mut state = RatchetState::init_alice(
+            let mut state = RatchetState::init_alice_from_test_bytes(
                 &sk,
                 &spk_b_pub,
                 arr::<32>(alice["dhs_a0_priv"].as_str().unwrap()),
@@ -1053,7 +1101,7 @@ mod tests {
         let bob_dhs_b1_pub = arr::<32>(v["bob"]["dhs_b1_pub"].as_str().unwrap());
         let sender_device_id = [0x11; 16];
         let recipient_device_id = [0x22; 16];
-        let mut state = RatchetState::init_alice(
+        let mut state = RatchetState::init_alice_from_test_bytes(
             &sk,
             &spk_b_pub,
             arr::<32>(alice["dhs_a0_priv"].as_str().unwrap()),
@@ -1110,7 +1158,7 @@ mod tests {
         let env_id = arr::<16>(a["envelope_id"].as_str().unwrap());
         let sender = arr::<16>(a["sender_device_id"].as_str().unwrap());
         let recipient = arr::<16>(a["recipient_device_id"].as_str().unwrap());
-        let mut state = RatchetState::init_bob(&sk, spk_priv);
+        let mut state = RatchetState::init_bob_from_test_bytes(&sk, spk_priv);
         let before = state_snapshot(&state);
 
         *ciphertext.last_mut().unwrap() ^= 1;
@@ -1130,7 +1178,7 @@ mod tests {
         );
         assert_eq!(state_snapshot(&state), before);
 
-        let mut state2 = RatchetState::init_bob(
+        let mut state2 = RatchetState::init_bob_from_test_bytes(
             &sk,
             arr::<32>(case["inputs"]["spk_b_priv"].as_str().unwrap()),
         );
@@ -1198,3 +1246,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "two_device_interop_tests.rs"]
+mod two_device_interop_tests;

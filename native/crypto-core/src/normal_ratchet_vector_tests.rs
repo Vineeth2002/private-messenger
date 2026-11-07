@@ -78,7 +78,7 @@ fn state_snapshot(
 ) {
     (
         *state.rk,
-        *state.dhs_priv,
+        state.dhs_priv.to_bytes(),
         state.dhs_pub,
         state.dhr_pub,
         state.ck_s.as_ref().map(|v| **v),
@@ -131,7 +131,7 @@ fn bob_after_message_zero() -> RatchetState {
         ciphertext: &ciphertext,
     };
 
-    let mut bob = RatchetState::init_bob(&sk, spk_priv);
+    let mut bob = RatchetState::init_bob_from_test_bytes(&sk, spk_priv);
     super::super::ingest_message_0_inner(&mut bob, env, 7, Some(42), dhs_b1_priv)
         .expect("frozen Message 0 ingestion");
     bob
@@ -146,7 +146,7 @@ fn alice_post_message_zero() -> RatchetState {
     let spk_pub = arr::<32>(case["inputs"]["spk_b_pub"].as_str().unwrap());
     let a0_priv = arr::<32>(v["alice"]["dhs_a0_priv"].as_str().unwrap());
 
-    let mut alice = RatchetState::init_alice(&sk, &spk_pub, a0_priv).unwrap();
+    let mut alice = RatchetState::init_alice_from_test_bytes(&sk, &spk_pub, a0_priv).unwrap();
     alice.rk = Zeroizing::new(arr::<32>(v["alice"]["rk_a"].as_str().unwrap()));
     alice.ck_s = Some(Zeroizing::new(arr::<32>(
         v["alice"]["ck_s_after_msg0"].as_str().unwrap(),
