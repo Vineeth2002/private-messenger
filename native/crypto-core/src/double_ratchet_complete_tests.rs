@@ -36,7 +36,7 @@ fn pair_states() -> (RatchetState, RatchetState) {
 
     let bob = RatchetState {
         rk: Zeroizing::new(root),
-        dhs_priv: Zeroizing::new(bob_priv),
+        dhs_priv: x25519_dalek::StaticSecret::from(bob_priv),
         dhs_pub: bob_pub,
         dhr_pub: Some(alice_pub),
         ck_s: Some(Zeroizing::new(chain)),
@@ -48,7 +48,7 @@ fn pair_states() -> (RatchetState, RatchetState) {
     };
     let alice = RatchetState {
         rk: Zeroizing::new(root),
-        dhs_priv: Zeroizing::new(alice_priv),
+        dhs_priv: x25519_dalek::StaticSecret::from(alice_priv),
         dhs_pub: alice_pub,
         dhr_pub: Some(bob_pub),
         ck_s: None,
@@ -120,7 +120,7 @@ fn snapshot(
 ) {
     (
         *state.rk,
-        *state.dhs_priv,
+        state.dhs_priv.to_bytes(),
         state.dhs_pub,
         state.dhr_pub,
         state.ck_s.as_ref().map(|v| **v),
@@ -210,7 +210,7 @@ fn new_ratchet_retains_old_and_new_chain_skipped_keys() {
     assert!(shared.was_contributory());
     let (rk_next, ck_s_next) = kdf_rk(&bob.rk, shared.as_bytes());
     bob.rk = rk_next;
-    bob.dhs_priv = Zeroizing::new(new_priv);
+    bob.dhs_priv = x25519_dalek::StaticSecret::from(new_priv);
     bob.dhs_pub = PublicKey::from(&new_dhs).to_bytes();
     bob.pn = bob.ns;
     bob.ns = 0;
@@ -275,7 +275,7 @@ fn new_ratchet_auth_failure_does_not_commit_skipped_keys_or_ratchet_state() {
     let shared = new_dhs.diffie_hellman(&peer);
     let (rk_next, ck_s_next) = kdf_rk(&bob.rk, shared.as_bytes());
     bob.rk = rk_next;
-    bob.dhs_priv = Zeroizing::new(new_priv);
+    bob.dhs_priv = x25519_dalek::StaticSecret::from(new_priv);
     bob.dhs_pub = PublicKey::from(&new_dhs).to_bytes();
     bob.pn = bob.ns;
     bob.ns = 0;
