@@ -89,7 +89,7 @@ jobs:
             --tuples-only --no-align \
             --command "SELECT current_database() || '|' || host(inet_server_addr()) || '|' || inet_server_port() || '|' || current_schema() || '|' || EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'authorization_events' AND column_name = 'cert_cbor');")"
           echo "PostgreSQL integration target: ${result}"
-          test "${result}" = "pm_enrollment_test_20261030|127.0.0.1|5432|public|t"
+          test "${result}" = "pm_enrollment_test_20261030|127.0.0.1|5432|public|true"
 
       - name: Verify Go modules
         working-directory: services/gateway
