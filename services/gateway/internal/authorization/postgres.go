@@ -422,3 +422,104 @@ func uuidText(id [16]byte) string {
 func CanonicalAuthorizationDigest(raw []byte) [32]byte {
 	return sha256.Sum256(raw)
 }
+
+// ValidateLeafTx binds a device transparency leaf to the currently authorized
+// account/device state while retaining row-level SHARE locks in the caller's
+// publication transaction. It uses the established lifecycle lock order:
+// accounts -> authorization_accounts -> authorization_devices -> devices.
+func (a *PostgresAuthorizer) ValidateLeafTx(ctx context.Context, tx *sql.Tx, leaf kt.TransparencyLeafV1) error {
+	if err := a.valid(); err != nil {
+		return err
+	}
+	if tx == nil {
+		return errors.New("authorization: nil transaction for leaf validation")
+	}
+
+	accountID := uuidText(leaf.AccountID)
+	deviceID := uuidText(leaf.DeviceID)
+
+	var accountEpoch int64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT account_epoch FROM accounts WHERE account_id=$1::uuid FOR SHARE`, accountID,
+	).Scan(&accountEpoch); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return kt.ErrDeviceAuthorizationRejected
+		}
+		return err
+	}
+
+	var accountStatus int
+	var authorizationEpoch int64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT status,epoch FROM authorization_accounts WHERE account_id=$1::uuid FOR SHARE`, accountID,
+	).Scan(&accountStatus, &authorizationEpoch); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return kt.ErrDeviceAuthorizationRejected
+		}
+		return err
+	}
+	if accountStatus != int(AccountActive) {
+		return kt.ErrDeviceAuthorizationRejected
+	}
+
+	var deviceStatus int
+	var authorizedEpoch int64
+	var authorizationDSK, authorizationDDHK []byte
+	if err := tx.QueryRowContext(ctx,
+		`SELECT status,authorized_epoch,dsk_pub,ddhk_pub
+		 FROM authorization_devices
+		 WHERE account_id=$1::uuid AND device_id=$2::uuid
+		 FOR SHARE`, accountID, deviceID,
+	).Scan(&deviceStatus, &authorizedEpoch, &authorizationDSK, &authorizationDDHK); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return kt.ErrDeviceAuthorizationRejected
+		}
+		return err
+	}
+	if deviceStatus != int(DeviceActive) {
+		return kt.ErrDeviceRevoked
+	}
+
+	var deviceEpoch int64
+	var deviceDSK, deviceDDHK []byte
+	var revoked bool
+	if err := tx.QueryRowContext(ctx,
+		`SELECT account_epoch,dsk_pub,ddhk_pub,revoked_at IS NOT NULL
+		 FROM devices
+		 WHERE account_id=$1::uuid AND device_id=$2::uuid
+		 FOR SHARE`, accountID, deviceID,
+	).Scan(&deviceEpoch, &deviceDSK, &deviceDDHK, &revoked); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return kt.ErrDeviceAuthorizationRejected
+		}
+		return err
+	}
+	if revoked {
+		return kt.ErrDeviceRevoked
+	}
+
+	if accountEpoch < 1 || accountEpoch > int64(LifecycleWireV1MaxEpoch) ||
+		authorizationEpoch != accountEpoch || authorizedEpoch != accountEpoch ||
+		deviceEpoch != accountEpoch || uint64(accountEpoch) != leaf.Epoch ||
+		leaf.Epoch == 0 || leaf.Epoch > LifecycleWireV1MaxEpoch {
+		return kt.ErrDeviceStateMismatch
+	}
+	if len(deviceDSK) != 32 || len(deviceDDHK) != 32 ||
+		len(authorizationDSK) != 32 || len(authorizationDDHK) != 32 ||
+		!bytes.Equal(deviceDSK, authorizationDSK) || !bytes.Equal(deviceDDHK, authorizationDDHK) ||
+		!bytes.Equal(leaf.DSKPub[:], deviceDSK) || !bytes.Equal(leaf.DDHKPub[:], deviceDDHK) {
+		return kt.ErrDeviceStateMismatch
+	}
+
+	var pending bool
+	if err := tx.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM account_recovery_requests WHERE account_id=$1::uuid AND status='PENDING')`,
+		accountID,
+	).Scan(&pending); err != nil {
+		return err
+	}
+	if pending {
+		return kt.ErrPendingRecovery
+	}
+	return nil
+}

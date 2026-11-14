@@ -16,11 +16,19 @@ type TransparencySTHReader interface {
 	Latest(ctx context.Context) (SignedTreeHeadV1, []byte, time.Time, error)
 }
 
+// TransparencyCurrentLeafReader returns the exact signed leaf bytes for a
+// current-state key/hash pair. Proof consumers need these bytes to verify the
+// DSK signature and bind the leaf to the SMT inclusion proof.
+type TransparencyCurrentLeafReader interface {
+	CurrentLeaf(ctx context.Context, key, leafHash [32]byte) ([]byte, error)
+}
+
 // CurrentStateProofBundle is an internal service result. It is not a new wire
 // format; callers must expose the existing frozen PM-CBOR objects separately.
 type CurrentStateProofBundle struct {
 	SMTKey          [32]byte
 	LeafHash        [32]byte
+	LeafCBOR        []byte
 	SMTRoot         [32]byte
 	SMTSiblings     [][32]byte
 	HistorySequence uint64
@@ -77,6 +85,18 @@ func (s *TransparencyProofService) CurrentStateProof(ctx context.Context, target
 	}
 	if !found {
 		return CurrentStateProofBundle{}, ErrTransparencyStateNotFound
+	}
+
+	var leafCBOR []byte
+	if leafReader, ok := s.state.(TransparencyCurrentLeafReader); ok {
+		leafCBOR, err = leafReader.CurrentLeaf(ctx, target.Key, target.LeafHash)
+		if err != nil {
+			return CurrentStateProofBundle{}, err
+		}
+		leaf, leafHash, verifyErr := VerifyTransparencyLeafV1(leafCBOR)
+		if verifyErr != nil || SMTKey(leaf.AccountID, leaf.DeviceID) != target.Key || leafHash != target.LeafHash {
+			return CurrentStateProofBundle{}, errors.New("current-state leaf bytes do not match the committed key and leaf hash")
+		}
 	}
 
 	smtRoot, smtProof, err := SMTInclusionProofV1(current, targetKey)
@@ -137,6 +157,7 @@ func (s *TransparencyProofService) CurrentStateProof(ctx context.Context, target
 	return CurrentStateProofBundle{
 		SMTKey:          target.Key,
 		LeafHash:        target.LeafHash,
+		LeafCBOR:        append([]byte(nil), leafCBOR...),
 		SMTRoot:         smtRoot,
 		SMTSiblings:     smtProof,
 		HistorySequence: sequence,

@@ -83,3 +83,17 @@ func TestTransparencyPublicationConstructorCopiesKeyAndRejectsInvalidKey(t *test
 		t.Fatal("service retained caller-owned private key slice")
 	}
 }
+
+func TestTransparencyPublicationRejectsDifferentPersistedLogIdentity(t *testing.T) {
+	var configured, persisted [32]byte
+	configured[0] = 0x11
+	persisted[0] = 0x22
+	service := &TransparencyPublicationService{logID: configured}
+	err := service.verifySTHLogIdentity(SignedTreeHeadV1{LogID: persisted})
+	if !errors.Is(err, ErrTransparencyLogIdentityMismatch) {
+		t.Fatalf("err = %v, want ErrTransparencyLogIdentityMismatch", err)
+	}
+	if err := service.verifySTHLogIdentity(SignedTreeHeadV1{LogID: configured}); err != nil {
+		t.Fatalf("matching log identity rejected: %v", err)
+	}
+}

@@ -29,6 +29,7 @@ import org.sovereign.pm.crypto.UniFfiCryptoBridge
 import org.sovereign.pm.bootstrap.InitialAccountBootstrapCoordinator
 import org.sovereign.pm.bootstrap.InitialAccountBootstrapHttpClient
 import org.sovereign.pm.messaging.DeviceDirectoryHttpClient
+import org.sovereign.pm.messaging.AlphaMessagingPanel
 import org.sovereign.pm.security.AndroidKeystorePlatformKek
 import org.sovereign.pm.security.IdentityStore
 import java.util.concurrent.ExecutorService
@@ -38,26 +39,27 @@ class MainActivity : ComponentActivity() {
     private val directoryExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // Snapshot state keeps the debug-only capture control in sync with automatic re-locks.
+    private var debugMirrorEnabled by mutableStateOf(false)
+    private val debugMirrorTimeout = Runnable { disableDebugScreenMirroring() }
+    private val debugMirrorWindowMs = 120_000L
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Recovery phrases are displayed in this activity even in debug builds.
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE,
-        )
+        // Sensitive by default. Debug mirroring is an explicit, temporary opt-in.
+        disableDebugScreenMirroring()
 
         val bridge = UniFfiCryptoBridge()
         val canonicalResult = runCatching {
             bridge.decodeStrictCanonical(byteArrayOf(0x18, 0x18))
         }
-        val identityResult = runCatching {
-            IdentityStore(
-                applicationContext,
-                bridge,
-                AndroidKeystorePlatformKek(applicationContext),
-            ).loadOrCreate()
-        }
+        val identityStore = IdentityStore(
+            applicationContext,
+            bridge,
+            AndroidKeystorePlatformKek(applicationContext),
+        )
+        val identityResult = runCatching { identityStore.loadOrCreate() }
         val identityLoad = identityResult.getOrNull()
 
         setContent {
@@ -80,6 +82,27 @@ class MainActivity : ComponentActivity() {
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Text("Sovereign PM", style = MaterialTheme.typography.headlineMedium)
+                        if (isDebuggableBuild()) {
+                            androidx.compose.foundation.layout.Row(
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            ) {
+                                Checkbox(
+                                    checked = debugMirrorEnabled,
+                                    enabled = recoveryPhrase == null && !isRegistering,
+                                    onCheckedChange = { requested ->
+                                        if (requested && recoveryPhrase == null && !isRegistering) {
+                                            enableDebugScreenMirroring()
+                                        } else {
+                                            disableDebugScreenMirroring()
+                                        }
+                                    },
+                                )
+                                Text("Temporary screen mirroring (debug only)")
+                            }
+                            if (debugMirrorEnabled) {
+                                Text("MIRRORING ENABLED â€” sensitive data hidden; auto-locks after 2 minutes or when app leaves foreground.")
+                            }
+                        }
                         Text("Local cryptographic state", style = MaterialTheme.typography.titleMedium)
                         Text(if (canonicalResult.isSuccess) "UniFFI canonical CBOR: PASS" else "UniFFI canonical CBOR: FAIL")
                         if (identityLoad == null) {
@@ -91,14 +114,20 @@ class MainActivity : ComponentActivity() {
                             Text("At-rest encryption: PASS")
                             Text("Keystore backing: ${identityLoad.kekCapabilities.backing}")
                             Text("PPAL: ${identityLoad.kekCapabilities.achievedPpal}")
-                            Text("Account ID: ${identityLoad.identity.accountId.toHexPrefix()}")
-                            Text("Device ID: ${identityLoad.identity.deviceId.toHexPrefix()}")
+                            if (debugMirrorEnabled) {
+                                Text("Account and device identifiers are hidden during screen mirroring.")
+                            } else {
+                                Text("Account ID: ${identityLoad.identity.accountId.toHexPrefix()}")
+                                Text("Device ID: ${identityLoad.identity.deviceId.toHexPrefix()}")
+                            }
                         }
 
                         Text("Initial account registration", style = MaterialTheme.typography.titleMedium)
                         Text("This registers the existing local identity as the first device. It does not create a replacement identity.")
                         Button(
                             onClick = {
+                                // Re-lock the window synchronously before creating or displaying recovery material.
+                                disableDebugScreenMirroring()
                                 recoveryPhrase = bridge.generateRecoveryMnemonic()
                                 recoveryPhraseBackedUp = false
                                 registrationStatus = "Recovery phrase generated. Back it up before registration."
@@ -118,6 +147,7 @@ class MainActivity : ComponentActivity() {
                                 val activeIdentity = identityLoad?.identity
                                 val phrase = recoveryPhrase
                                 if (activeIdentity != null && phrase != null && recoveryPhraseBackedUp && gatewayOrigin.isNotBlank()) {
+                                    disableDebugScreenMirroring()
                                     isRegistering = true
                                     registrationStatus = "Registering first device…"
                                     val configuredOrigin = gatewayOrigin
@@ -232,6 +262,17 @@ class MainActivity : ComponentActivity() {
                             Text(if (isVerifying) "Checkingâ€¦" else "Verify my device")
 }
                         Text("Directory result: $directoryStatus")
+                        if (!debugMirrorEnabled) {
+                            AlphaMessagingPanel(
+                                context = applicationContext,
+                                identityStore = identityStore,
+                                crypto = bridge,
+                                identity = identityLoad?.identity,
+                                gatewayOrigin = gatewayOrigin,
+                            )
+                        } else {
+                            Text("Messaging and pairing controls are hidden while mirroring because they can display private conversation or pairing material.")
+                        }
                         directoryEpoch?.let { Text("Gateway-reported account epoch: $it") }
                         Text("Security boundary: HTTPS authenticates the configured gateway using Android's normal certificate validation. This directory response is canonical CBOR, not a gateway-signed statement; this check is not rollback-resistant and is not sufficient by itself to authorize enrollment.")
                     }
@@ -240,7 +281,35 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun isDebuggableBuild(): Boolean =
+        (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+    private fun enableDebugScreenMirroring() {
+        // This path is unreachable in release builds; never persist the opt-in.
+        if (!isDebuggableBuild()) {
+            disableDebugScreenMirroring()
+            return
+        }
+        debugMirrorEnabled = true
+        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        mainHandler.removeCallbacks(debugMirrorTimeout)
+        mainHandler.postDelayed(debugMirrorTimeout, debugMirrorWindowMs)
+    }
+
+    private fun disableDebugScreenMirroring() {
+        mainHandler.removeCallbacks(debugMirrorTimeout)
+        debugMirrorEnabled = false
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    }
+
+    override fun onPause() {
+        // Re-enable FLAG_SECURE before the Activity leaves the foreground.
+        disableDebugScreenMirroring()
+        super.onPause()
+    }
+
     override fun onDestroy() {
+        disableDebugScreenMirroring()
         directoryExecutor.shutdownNow()
         super.onDestroy()
     }

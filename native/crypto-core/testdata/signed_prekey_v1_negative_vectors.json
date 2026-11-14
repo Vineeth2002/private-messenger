@@ -1,0 +1,96 @@
+{
+  "contract": "PM-V1-SIGNED-PREKEY-v1-negative-vectors-candidate",
+  "dsk_public_hex": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+  "cases": [
+    {
+      "name": "empty_input",
+      "wire_hex": "",
+      "parse_error": "InvalidCbor",
+      "verify_error": ""
+    },
+    {
+      "name": "truncated_cbor",
+      "wire_hex": "a701",
+      "parse_error": "InvalidCbor",
+      "verify_error": ""
+    },
+    {
+      "name": "unsupported_version",
+      "wire_hex": "a7010202500102030405060708090a0b0c0d0e0f1003030450a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0507065820132c442be010fbd57e72603328aa76e71fccc1503aae219327d14d9c9993f472075840236dbcc31451395ca05f4ac2d7648b594437cce5cd5a8acda8eb152c2a7ca22ba071ea1f4aef481181d9619c504e09ac3f30eef2f562ac5a12c8094ae3909d0f",
+      "parse_error": "UnsupportedVersion",
+      "verify_error": ""
+    },
+    {
+      "name": "zero_account_id",
+      "wire_hex": "a7010102500000000000000000000000000000000003030450a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0507065820132c442be010fbd57e72603328aa76e71fccc1503aae219327d14d9c9993f472075840236dbcc31451395ca05f4ac2d7648b594437cce5cd5a8acda8eb152c2a7ca22ba071ea1f4aef481181d9619c504e09ac3f30eef2f562ac5a12c8094ae3909d0f",
+      "parse_error": "InvalidField",
+      "verify_error": ""
+    },
+    {
+      "name": "zero_account_epoch",
+      "wire_hex": "a7010102500102030405060708090a0b0c0d0e0f1003000450a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0507065820132c442be010fbd57e72603328aa76e71fccc1503aae219327d14d9c9993f472075840236dbcc31451395ca05f4ac2d7648b594437cce5cd5a8acda8eb152c2a7ca22ba071ea1f4aef481181d9619c504e09ac3f30eef2f562ac5a12c8094ae3909d0f",
+      "parse_error": "InvalidField",
+      "verify_error": ""
+    },
+    {
+      "name": "account_epoch_above_u32",
+      "wire_hex": "a7010102500102030405060708090a0b0c0d0e0f10031b00000001000000000450a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0507065820132c442be010fbd57e72603328aa76e71fccc1503aae219327d14d9c9993f472075840236dbcc31451395ca05f4ac2d7648b594437cce5cd5a8acda8eb152c2a7ca22ba071ea1f4aef481181d9619c504e09ac3f30eef2f562ac5a12c8094ae3909d0f",
+      "parse_error": "InvalidField",
+      "verify_error": ""
+    },
+    {
+      "name": "zero_device_id",
+      "wire_hex": "a7010102500102030405060708090a0b0c0d0e0f1003030450000000000000000000000000000000000507065820132c442be010fbd57e72603328aa76e71fccc1503aae219327d14d9c9993f472075840236dbcc31451395ca05f4ac2d7648b594437cce5cd5a8acda8eb152c2a7ca22ba071ea1f4aef481181d9619c504e09ac3f30eef2f562ac5a12c8094ae3909d0f",
+      "parse_error": "InvalidField",
+      "verify_error": ""
+    },
+    {
+      "name": "spk_id_above_u32",
+      "wire_hex": "a7010102500102030405060708090a0b0c0d0e0f1003030450a0a1a2a3a4a5a6a7a8a9aaabacadaeaf051b0000000100000000065820132c442be010fbd57e72603328aa76e71fccc1503aae219327d14d9c9993f472075840236dbcc31451395ca05f4ac2d7648b594437cce5cd5a8acda8eb152c2a7ca22ba071ea1f4aef481181d9619c504e09ac3f30eef2f562ac5a12c8094ae3909d0f",
+      "parse_error": "InvalidField",
+      "verify_error": ""
+    },
+    {
+      "name": "low_order_x25519_public",
+      "wire_hex": "a7010102500102030405060708090a0b0c0d0e0f1003030450a0a1a2a3a4a5a6a7a8a9aaabacadaeaf05070658200000000000000000000000000000000000000000000000000000000000000000075840236dbcc31451395ca05f4ac2d7648b594437cce5cd5a8acda8eb152c2a7ca22ba071ea1f4aef481181d9619c504e09ac3f30eef2f562ac5a12c8094ae3909d0f",
+      "parse_error": "InvalidX25519PublicKey",
+      "verify_error": ""
+    },
+    {
+      "name": "short_signature",
+      "wire_hex": "a7010102500102030405060708090a0b0c0d0e0f1003030450a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0507065820132c442be010fbd57e72603328aa76e71fccc1503aae219327d14d9c9993f47207583f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "parse_error": "InvalidField",
+      "verify_error": ""
+    },
+    {
+      "name": "unknown_map_field",
+      "wire_hex": "a8010102500102030405060708090a0b0c0d0e0f1003030450a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0507065820132c442be010fbd57e72603328aa76e71fccc1503aae219327d14d9c9993f472075840236dbcc31451395ca05f4ac2d7648b594437cce5cd5a8acda8eb152c2a7ca22ba071ea1f4aef481181d9619c504e09ac3f30eef2f562ac5a12c8094ae3909d0f0800",
+      "parse_error": "InvalidShape",
+      "verify_error": ""
+    },
+    {
+      "name": "missing_signature_field",
+      "wire_hex": "a6010102500102030405060708090a0b0c0d0e0f1003030450a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0507065820132c442be010fbd57e72603328aa76e71fccc1503aae219327d14d9c9993f472",
+      "parse_error": "InvalidShape",
+      "verify_error": ""
+    },
+    {
+      "name": "noncanonical_integer_encoding",
+      "wire_hex": "a701180102500102030405060708090a0b0c0d0e0f1003030450a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0507065820132c442be010fbd57e72603328aa76e71fccc1503aae219327d14d9c9993f472075840236dbcc31451395ca05f4ac2d7648b594437cce5cd5a8acda8eb152c2a7ca22ba071ea1f4aef481181d9619c504e09ac3f30eef2f562ac5a12c8094ae3909d0f",
+      "parse_error": "InvalidCbor",
+      "verify_error": ""
+    },
+    {
+      "name": "tampered_signature",
+      "wire_hex": "a7010102500102030405060708090a0b0c0d0e0f1003030450a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0507065820132c442be010fbd57e72603328aa76e71fccc1503aae219327d14d9c9993f472075840236dbcc31451395ca05f4ac2d7648b594437cce5cd5a8acda8eb152c2a7ca22ba071ea1f4aef481181d9619c504e09ac3f30eef2f562ac5a12c8094ae3909d0e",
+      "parse_error": "",
+      "verify_error": "InvalidSignature"
+    },
+    {
+      "name": "zero_signed_prekey_id",
+      "wire_hex": "a7010102500102030405060708090a0b0c0d0e0f1003030450a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0500065820132c442be010fbd57e72603328aa76e71fccc1503aae219327d14d9c9993f472075840236dbcc31451395ca05f4ac2d7648b594437cce5cd5a8acda8eb152c2a7ca22ba071ea1f4aef481181d9619c504e09ac3f30eef2f562ac5a12c8094ae3909d0f",
+      "parse_error": "InvalidField",
+      "verify_error": ""
+    }
+  ]
+}

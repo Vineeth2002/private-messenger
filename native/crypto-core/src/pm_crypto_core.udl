@@ -13,6 +13,35 @@ enum CryptoError {
     "EntropyFailure",
 };
 
+
+interface SignedPrekeyContext {
+    bytes raw_signed_prekey();
+
+    [Throws=CryptoError]
+    bytes seal_for_storage(bytes storage_key);
+};
+
+interface MessagingSession {
+    bytes session_id();
+    [Throws=CryptoError]
+    bytes initial_prekey_header();
+    [Throws=CryptoError]
+    bytes current_snapshot();
+    [Throws=CryptoError]
+    bytes stage_encrypt_message(bytes envelope_id, bytes plaintext);
+    [Throws=CryptoError]
+    bytes stage_decrypt_message(bytes envelope_wire);
+    [Throws=CryptoError]
+    bytes seal_local_message_body(u64 generation, bytes plaintext);
+    [Throws=CryptoError]
+    bytes open_local_message_body(u64 generation, bytes sealed_body);
+    [Throws=CryptoError]
+    bytes pending_snapshot();
+    [Throws=CryptoError]
+    void commit_staged();
+    [Throws=CryptoError]
+    void discard_staged();
+};
 interface AccountContext {
     bytes account_id();
     bytes device_id();
@@ -30,6 +59,21 @@ interface AccountContext {
 
     [Throws=CryptoError]
     bytes sign_device_enrollment_pop_for_challenge(bytes enrollment_certificate, bytes challenge_id, bytes challenge_nonce);
+    [Throws=CryptoError]
+    SignedPrekeyContext generate_signed_prekey(u64 epoch, u32 spk_id);
+
+    [Throws=CryptoError]
+    SignedPrekeyContext restore_signed_prekey(bytes raw_signed_prekey, bytes encrypted_private_record, bytes storage_key);
+
+    [Throws=CryptoError]
+    MessagingSession create_initiator_session(bytes peer_account_id, bytes peer_device_id, u64 peer_epoch, bytes peer_dsk_public, bytes peer_ddhk_public, bytes peer_signed_prekey, bytes session_id, u64 local_epoch, bytes storage_key);
+
+    [Throws=CryptoError]
+    MessagingSession accept_prekey_message(SignedPrekeyContext prekey, bytes session_id, u64 local_epoch, bytes envelope_wire, bytes storage_key);
+
+    [Throws=CryptoError]
+    MessagingSession restore_messaging_session(bytes peer_account_id, bytes peer_device_id, u64 local_epoch, u64 peer_epoch, bytes session_id, u64 generation, bytes encrypted_snapshot, bytes first_prekey_header, bytes storage_key);
+
 };
 
 interface RecoveryContext {
@@ -48,6 +92,9 @@ interface RecoveryContext {
 
 namespace pm_crypto_core {
     [Throws=CryptoError]
+    bytes verify_signed_prekey_for_peer_v1(bytes raw_signed_prekey, bytes dsk_public_key, bytes expected_account_id, u64 expected_epoch, bytes expected_device_id);
+
+    [Throws=CryptoError]
     bytes decode_strict_canonical(bytes input);
 
     [Throws=CryptoError]
@@ -64,4 +111,9 @@ namespace pm_crypto_core {
 
     [Throws=CryptoError]
     RecoveryContext recovery_initialize(string mnemonic);
-};
+
+    [Throws=CryptoError]
+    bytes kt_verify_device_proof_v1(bytes proof_bundle, bytes consistency_bundle, bytes previous_sth, bytes log_public_key, bytes expected_log_id, bytes expected_account_id, bytes expected_device_id, bytes witness_registry);
+
+    [Throws=CryptoError]
+    bytes kt_verify_signed_prekey_binding_v1(bytes leaf_wire, bytes signed_prekey_wire);};

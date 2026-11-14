@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/sovereign-messenger/private-messenger/services/gateway/internal/signedprekeyv1"
 )
 
 var (
@@ -47,9 +49,25 @@ func (p *DeviceProvisioner) Enroll(ctx context.Context, device Device, certifica
 	if len(certificate) == 0 {
 		return errors.New("device certificate is required")
 	}
+	seenSPKIDs := make(map[int64]struct{}, len(prekeys))
 	for _, prekey := range prekeys {
 		if prekey.DeviceID != device.DeviceID {
 			return errors.New("signed prekey device ID mismatch")
+		}
+		if _, duplicate := seenSPKIDs[prekey.SPKID]; duplicate {
+			return errors.New("duplicate signed prekey ID")
+		}
+		seenSPKIDs[prekey.SPKID] = struct{}{}
+		if err := signedprekeyv1.VerifyRecordFields(
+			device.AccountID,
+			device.AccountEpoch,
+			device.DeviceID,
+			prekey.SPKID,
+			prekey.SPKPub[:],
+			prekey.Signature[:],
+			device.DSKPub[:],
+		); err != nil {
+			return fmt.Errorf("invalid signed prekey %d: %w", prekey.SPKID, err)
 		}
 	}
 

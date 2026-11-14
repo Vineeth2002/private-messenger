@@ -8,9 +8,11 @@ import (
 )
 
 var (
-	ErrDeviceStateNotFound = errors.New("kt: device state not found")
-	ErrDeviceRevoked       = errors.New("kt: device is revoked")
-	ErrDeviceStateMismatch = errors.New("kt: transparency leaf does not match device state")
+	ErrDeviceStateNotFound         = errors.New("kt: device state not found")
+	ErrDeviceRevoked               = errors.New("kt: device is revoked")
+	ErrDeviceStateMismatch         = errors.New("kt: transparency leaf does not match device state")
+	ErrDeviceAuthorizationRejected = errors.New("kt: device authorization rejected transparency publication")
+	ErrPendingRecovery             = errors.New("kt: account recovery is pending")
 )
 
 // DeviceState is the persisted public device state needed to bind a

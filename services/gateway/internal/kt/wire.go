@@ -440,3 +440,12 @@ func SHA256Hex(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
+
+// encodeHistoryEntryV1 emits the exact canonical three-field history entry.
+func encodeHistoryEntryV1(sequence uint64, smtKey, leafHash [32]byte) ([]byte, error) {
+	return cbor.EncodeCanonical(cbor.Value{Kind: cbor.KindMap, Map: []cbor.Pair{
+		{Key: cbor.Value{Kind: cbor.KindInt, Int: cbor.Int{Arg: 1}}, Val: cbor.Value{Kind: cbor.KindInt, Int: cbor.Int{Arg: sequence}}},
+		{Key: cbor.Value{Kind: cbor.KindInt, Int: cbor.Int{Arg: 2}}, Val: cbor.Value{Kind: cbor.KindBytes, Bytes: smtKey[:]}},
+		{Key: cbor.Value{Kind: cbor.KindInt, Int: cbor.Int{Arg: 3}}, Val: cbor.Value{Kind: cbor.KindBytes, Bytes: leafHash[:]}},
+	}})
+}

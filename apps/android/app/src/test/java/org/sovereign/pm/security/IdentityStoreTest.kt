@@ -189,6 +189,58 @@ class IdentityStoreTest {
         assertArrayEquals(originalRecord, recordFile.readBytes())
     }
 
+    @Test
+    fun scopedStorageKeyIsAvailableOnlyInsideCallbackAndIsZeroedAfterReturn() {
+        val platformKek = FakePlatformKek()
+        val bridge = FakeCryptoBridge()
+        val store = IdentityStore(context, bridge, platformKek)
+        store.loadOrCreate()
+
+        var observedKey: ByteArray? = null
+        val result = store.withStorageKey { storageKey ->
+            observedKey = storageKey
+            assertArrayEquals(ByteArray(DEK_BYTES) { (it + 7).toByte() }, storageKey)
+            "native-operation-complete"
+        }
+
+        assertEquals("native-operation-complete", result)
+        assertTrue(observedKey != null)
+        assertArrayEquals(ByteArray(DEK_BYTES), observedKey)
+    }
+
+    @Test
+    fun scopedStorageKeyIsZeroedWhenCallbackThrows() {
+        val platformKek = FakePlatformKek()
+        val bridge = FakeCryptoBridge()
+        val store = IdentityStore(context, bridge, platformKek)
+        store.loadOrCreate()
+
+        var observedKey: ByteArray? = null
+        val failure = assertThrows(IllegalArgumentException::class.java) {
+            store.withStorageKey { storageKey ->
+                observedKey = storageKey
+                throw IllegalArgumentException("expected callback failure")
+            }
+        }
+
+        assertEquals("expected callback failure", failure.message)
+        assertTrue(observedKey != null)
+        assertArrayEquals(ByteArray(DEK_BYTES), observedKey)
+    }
+
+    @Test
+    fun scopedStorageKeyDoesNotInitializeMissingIdentity() {
+        val platformKek = FakePlatformKek(keyExists = false)
+        val bridge = FakeCryptoBridge()
+        val store = IdentityStore(context, bridge, platformKek)
+
+        assertThrows(IllegalStateException::class.java) {
+            store.withStorageKey { "must-not-run" }
+        }
+        assertEquals(0, bridge.initializeCalls)
+        assertFalse(recordFile.exists())
+    }
+
     private fun removeTestArtifacts() {
         listOf(
             recordFile,

@@ -63,20 +63,9 @@ func (p *TransparencyPublicationService) PublishStateAndSTH(ctx context.Context,
 	if p == nil || p.state == nil || p.state.db == nil {
 		return PublishedTransparencySnapshot{}, errors.New("nil transparency publication service")
 	}
-	entry, err := ParseHistoryEntryV1(historyRaw)
-	if err != nil {
-		return PublishedTransparencySnapshot{}, fmt.Errorf("invalid history entry: %w", err)
-	}
-	if entry.Sequence == 0 || entry.SMTKey != leaf.Key || entry.LeafHash != leaf.LeafHash {
-		return PublishedTransparencySnapshot{}, ErrTransparencyPublicationMismatch
-	}
-	if err := validatePublishedTransparencyLeaf(leaf, leafRaw); err != nil {
+	if err := validateTransparencyPublicationInput(leaf, leafRaw, historyRaw); err != nil {
 		return PublishedTransparencySnapshot{}, err
 	}
-	if entry.Sequence > uint64(^uint64(0)>>1) {
-		return PublishedTransparencySnapshot{}, errors.New("history sequence outside PostgreSQL bigint")
-	}
-
 	beginner, ok := p.state.db.(interface {
 		BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
 	})
@@ -93,6 +82,33 @@ func (p *TransparencyPublicationService) PublishStateAndSTH(ctx context.Context,
 			_ = tx.Rollback()
 		}
 	}()
+
+	snapshot, err := p.PublishStateAndSTHInTx(ctx, tx, leaf, leafRaw, historyRaw)
+	if err != nil {
+		return PublishedTransparencySnapshot{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return PublishedTransparencySnapshot{}, err
+	}
+	committed = true
+	return snapshot, nil
+}
+
+// PublishStateAndSTHInTx publishes through a caller-owned transaction. It is
+// used by device-bound publication so account/device authorization row locks
+// remain held until the current-state leaf, history entry, and STH commit.
+// The caller is responsible for committing or rolling back tx.
+func (p *TransparencyPublicationService) PublishStateAndSTHInTx(ctx context.Context, tx *sql.Tx, leaf SMTLeaf, leafRaw []byte, historyRaw []byte) (PublishedTransparencySnapshot, error) {
+	if p == nil || p.state == nil || p.state.db == nil || tx == nil {
+		return PublishedTransparencySnapshot{}, errors.New("nil transparency publication transaction")
+	}
+	if err := validateTransparencyPublicationInput(leaf, leafRaw, historyRaw); err != nil {
+		return PublishedTransparencySnapshot{}, err
+	}
+	entry, err := ParseHistoryEntryV1(historyRaw)
+	if err != nil {
+		return PublishedTransparencySnapshot{}, fmt.Errorf("invalid history entry: %w", err)
+	}
 
 	if _, err := tx.ExecContext(ctx, lockTransparencyHistoryPublicationSQL, transparencyHistoryLockKey); err != nil {
 		return PublishedTransparencySnapshot{}, err
@@ -145,10 +161,6 @@ func (p *TransparencyPublicationService) PublishStateAndSTH(ctx context.Context,
 	if err := publishSTHInExecutor(ctx, tx, STHRecord{TreeSize: uint64(wanted), SignedTreeHead: sthRaw}); err != nil {
 		return PublishedTransparencySnapshot{}, err
 	}
-	if err := tx.Commit(); err != nil {
-		return PublishedTransparencySnapshot{}, err
-	}
-	committed = true
 	return PublishedTransparencySnapshot{STH: sth, SignedBytes: append([]byte(nil), sthRaw...)}, nil
 }
 
@@ -183,7 +195,7 @@ func (p *TransparencyPublicationService) retryPublishedState(ctx context.Context
 	if sth.TreeSize != uint64(storedSize) || sth.TreeSize != uint64(wanted) {
 		return PublishedTransparencySnapshot{}, errors.New("persisted STH tree size mismatch")
 	}
-	if err := tx.Commit(); err != nil {
+	if err := p.verifySTHLogIdentity(sth); err != nil {
 		return PublishedTransparencySnapshot{}, err
 	}
 	return PublishedTransparencySnapshot{STH: sth, SignedBytes: append([]byte(nil), storedSTH...)}, nil
@@ -213,6 +225,33 @@ func (p *TransparencyPublicationService) buildSTH(treeSize uint64, smtRoot, hist
 	return raw, verified, nil
 }
 
+func validateTransparencyPublicationInput(leaf SMTLeaf, leafRaw []byte, historyRaw []byte) error {
+	entry, err := ParseHistoryEntryV1(historyRaw)
+	if err != nil {
+		return fmt.Errorf("invalid history entry: %w", err)
+	}
+	if entry.Sequence == 0 || entry.SMTKey != leaf.Key || entry.LeafHash != leaf.LeafHash {
+		return ErrTransparencyPublicationMismatch
+	}
+	if err := validatePublishedTransparencyLeaf(leaf, leafRaw); err != nil {
+		return err
+	}
+	if entry.Sequence > uint64(^uint64(0)>>1) {
+		return errors.New("history sequence outside PostgreSQL bigint")
+	}
+	return nil
+}
+
+func (p *TransparencyPublicationService) verifySTHLogIdentity(sth SignedTreeHeadV1) error {
+	if p == nil {
+		return errors.New("nil transparency publication service")
+	}
+	if sth.LogID != p.logID {
+		return ErrTransparencyLogIdentityMismatch
+	}
+	return nil
+}
+
 func queryHistoryMaxInTx(ctx context.Context, tx *sql.Tx) (int64, error) {
 	var maxSeq int64
 	if err := tx.QueryRowContext(ctx, maxTransparencyHistorySequenceSQL).Scan(&maxSeq); err != nil {
@@ -230,13 +269,20 @@ func (p *TransparencyPublicationService) verifyPrePublicationSnapshot(ctx contex
 		var raw []byte
 		var publishedAt time.Time
 		err := tx.QueryRowContext(ctx, selectLatestSTH).Scan(&size, &raw, &publishedAt)
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
+		if !errors.Is(err, sql.ErrNoRows) {
+			if err != nil {
+				return err
+			}
+			return errors.New("empty history has a persisted STH")
 		}
+		current, err := currentStateInTx(ctx, tx)
 		if err != nil {
 			return err
 		}
-		return errors.New("empty history has a persisted STH")
+		if len(current) != 0 {
+			return errors.New("current transparency state exists without append-only history")
+		}
+		return nil
 	}
 	var size int64
 	var raw []byte
@@ -252,6 +298,9 @@ func (p *TransparencyPublicationService) verifyPrePublicationSnapshot(ctx contex
 	}
 	sth, err := VerifySignedTreeHeadV1(raw, p.logPublic)
 	if err != nil {
+		return err
+	}
+	if err := p.verifySTHLogIdentity(sth); err != nil {
 		return err
 	}
 	current, err := currentStateInTx(ctx, tx)
