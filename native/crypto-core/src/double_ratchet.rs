@@ -34,6 +34,9 @@ use crate::x3dh::{self, X3dhError};
 #[path = "normal_ratchet_linear.rs"]
 mod normal_ratchet_linear;
 
+#[path = "ratchet_snapshot.rs"]
+mod ratchet_snapshot;
+
 pub use normal_ratchet_linear::{
     decrypt_message, decrypt_new_ratchet_message, encrypt_message, NormalMessageHeader,
 };
@@ -82,6 +85,8 @@ pub enum RatchetError {
     MaxSkipExceeded,
     #[error("message number exhausted")]
     MessageNumberExhausted,
+    #[error("invalid ratchet persistence snapshot")]
+    InvalidSnapshot,
     #[error("replayed or expired message")]
     ReplayDetected,
     #[error("message authentication failed")]
@@ -1250,3 +1255,36 @@ mod tests {
 #[cfg(test)]
 #[path = "two_device_interop_tests.rs"]
 mod two_device_interop_tests;
+
+impl RatchetState {
+    /// Encode the complete ratchet state as a canonical, zeroizing snapshot buffer.
+    ///
+    /// The returned bytes contain plaintext ratchet secrets. They MUST be wrapped by the
+    /// persistence layer's authenticated-encryption record before they are written to storage
+    /// or passed outside the native crypto boundary.
+    pub(crate) fn encode_persistence_snapshot(
+        &self,
+    ) -> Result<Zeroizing<Vec<u8>>, RatchetError> {
+        ratchet_snapshot::encode(self)
+    }
+
+    /// Restore a ratchet from a strictly validated snapshot. This does not authenticate or
+    /// decrypt the snapshot; callers must supply bytes obtained from an authenticated record.
+    pub(crate) fn restore_persistence_snapshot(
+        bytes: &[u8],
+    ) -> Result<Self, RatchetError> {
+        ratchet_snapshot::decode(bytes)
+    }
+}
+
+// Used only by the native messaging-session boundary to construct the next
+// authenticated normal-message header from the current sending chain.
+impl RatchetState {
+    pub(crate) fn next_normal_message_header(&self) -> NormalMessageHeader {
+        NormalMessageHeader {
+            ratchet_public: self.dhs_pub,
+            previous_chain_length: self.pn,
+            sequence_number: self.ns,
+        }
+    }
+}

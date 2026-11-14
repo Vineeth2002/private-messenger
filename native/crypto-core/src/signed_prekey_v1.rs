@@ -185,6 +185,7 @@ fn validate_fields(
     if *account_id == [0u8; 16]
         || *device_id == [0u8; 16]
         || !(1..=SIGNED_PREKEY_V1_MAX_EPOCH).contains(&epoch)
+        || spk_id == 0
         || spk_id > u32::MAX as u64
     {
         return Err(SignedPrekeyV1Error::InvalidField);
@@ -344,5 +345,170 @@ mod tests {
             sign_signed_prekey_v1(&dsk, [1u8; 16], 3, [2u8; 16], 7, [0u8; 32]),
             Err(SignedPrekeyV1Error::InvalidX25519PublicKey)
         );
+    }
+}
+
+
+#[cfg(test)]
+mod go_signed_prekey_v1_shared_vector_tests {
+    use super::{sign_signed_prekey_v1, SignedPrekeyV1};
+    use ed25519_dalek::SigningKey;
+    use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
+
+    fn decode_hex<const N: usize>(value: &str) -> [u8; N] {
+        assert_eq!(value.len(), N * 2, "hex fixture length mismatch");
+        let mut out = [0u8; N];
+        for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+            let pair = std::str::from_utf8(pair).expect("ASCII hex fixture");
+            out[index] = u8::from_str_radix(pair, 16).expect("valid hex fixture");
+        }
+        out
+    }
+
+    #[test]
+    fn go_candidate_vector_matches_rust_generator_and_verifies() {
+        // Deterministic test-only key material. Never use these values in a real account.
+        let dsk_seed = decode_hex::<32>(
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        );
+        let dsk = SigningKey::from_bytes(&dsk_seed);
+        let expected_dsk_public = decode_hex::<32>(
+            "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+        );
+        assert_eq!(dsk.verifying_key().to_bytes(), expected_dsk_public);
+
+        let account_id = decode_hex::<16>("0102030405060708090a0b0c0d0e0f10");
+        let device_id = decode_hex::<16>("a0a1a2a3a4a5a6a7a8a9aaabacadaeaf");
+        let spk_private = StaticSecret::from([0x42u8; 32]);
+        let spk_public = X25519PublicKey::from(&spk_private).to_bytes();
+        let expected_spk_public = decode_hex::<32>(
+            "132c442be010fbd57e72603328aa76e71fccc1503aae219327d14d9c9993f472",
+        );
+        assert_eq!(spk_public, expected_spk_public);
+
+        let expected_raw = decode_hex::<145>(
+            "a7010102500102030405060708090a0b0c0d0e0f1003030450a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0507065820132c442be010fbd57e72603328aa76e71fccc1503aae219327d14d9c9993f472075840236dbcc31451395ca05f4ac2d7648b594437cce5cd5a8acda8eb152c2a7ca22ba071ea1f4aef481181d9619c504e09ac3f30eef2f562ac5a12c8094ae3909d0f",
+        );
+
+        let generated = sign_signed_prekey_v1(
+            &dsk,
+            account_id,
+            3,
+            device_id,
+            7,
+            spk_public,
+        )
+        .expect("Rust signs the shared candidate vector");
+        assert_eq!(generated, expected_raw, "Rust and Go wire bytes differ");
+
+        let parsed = SignedPrekeyV1::parse(&expected_raw)
+            .expect("Rust parses the Go-generated candidate vector");
+        parsed
+            .verify(&expected_dsk_public)
+            .expect("Rust verifies the Go-generated DSK signature");
+        assert_eq!(parsed.account_id, account_id);
+        assert_eq!(parsed.account_epoch, 3);
+        assert_eq!(parsed.device_id, device_id);
+        assert_eq!(parsed.spk_id, 7);
+        assert_eq!(parsed.spk_pub, expected_spk_public);
+    }
+}
+
+
+
+#[cfg(test)]
+mod go_shared_negative_vectors {
+    use super::{SignedPrekeyV1, SignedPrekeyV1Error};
+
+    fn decode_hex(value: &str) -> Vec<u8> {
+        assert_eq!(value.len() % 2, 0, "odd-length vector hex");
+        value
+            .as_bytes()
+            .chunks_exact(2)
+            .map(|pair| {
+                let pair = std::str::from_utf8(pair).expect("ASCII vector hex");
+                u8::from_str_radix(pair, 16).expect("valid vector hex")
+            })
+            .collect()
+    }
+
+    fn error_for_name(name: &str) -> SignedPrekeyV1Error {
+        match name {
+            "InvalidCbor" => SignedPrekeyV1Error::InvalidCbor,
+            "InvalidShape" => SignedPrekeyV1Error::InvalidShape,
+            "UnsupportedVersion" => SignedPrekeyV1Error::UnsupportedVersion,
+            "InvalidField" => SignedPrekeyV1Error::InvalidField,
+            "InvalidX25519PublicKey" => SignedPrekeyV1Error::InvalidX25519PublicKey,
+            "InvalidSignature" => SignedPrekeyV1Error::InvalidSignature,
+            other => panic!("unknown expected signed-prekey error: {other}"),
+        }
+    }
+
+    #[test]
+    fn go_shared_negative_vectors_match_in_rust() {
+        let document: serde_json::Value = serde_json::from_str(include_str!(
+            "../testdata/signed_prekey_v1_negative_vectors.json"
+        ))
+        .expect("valid shared negative-vector JSON");
+
+        assert_eq!(
+            document["contract"].as_str(),
+            Some("PM-V1-SIGNED-PREKEY-v1-negative-vectors-candidate")
+        );
+        let dsk_bytes = decode_hex(
+            document["dsk_public_hex"]
+                .as_str()
+                .expect("DSK public key hex"),
+        );
+        let dsk: [u8; 32] = dsk_bytes
+            .try_into()
+            .expect("DSK public key must be 32 bytes");
+
+        let cases = document["cases"].as_array().expect("vector cases array");
+        assert!(!cases.is_empty(), "negative vectors must not be empty");
+
+        for case in cases {
+            let name = case["name"].as_str().expect("case name");
+            let wire = decode_hex(case["wire_hex"].as_str().expect("wire hex"));
+            let expected_parse_error = case["parse_error"].as_str().unwrap_or("");
+            let expected_verify_error = case["verify_error"].as_str().unwrap_or("");
+
+            match SignedPrekeyV1::parse(&wire) {
+                Err(actual) => {
+                    assert!(
+                        !expected_parse_error.is_empty(),
+                        "{name}: unexpected parse error {actual:?}"
+                    );
+                    assert_eq!(
+                        actual,
+                        error_for_name(expected_parse_error),
+                        "{name}: parse error mismatch"
+                    );
+                    assert!(
+                        expected_verify_error.is_empty(),
+                        "{name}: verify expectation is unreachable after parse failure"
+                    );
+                }
+                Ok(parsed) => {
+                    assert!(
+                        expected_parse_error.is_empty(),
+                        "{name}: expected parse error {expected_parse_error}, but parsed"
+                    );
+                    let verify_result = parsed.verify(&dsk);
+                    if expected_verify_error.is_empty() {
+                        assert!(
+                            verify_result.is_ok(),
+                            "{name}: unexpected verify error {verify_result:?}"
+                        );
+                    } else {
+                        assert_eq!(
+                            verify_result,
+                            Err(error_for_name(expected_verify_error)),
+                            "{name}: verify error mismatch"
+                        );
+                    }
+                }
+            }
+        }
     }
 }

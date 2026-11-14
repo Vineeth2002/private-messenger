@@ -351,3 +351,83 @@ fn unknown_lower_pn_new_ratchet_is_rejected_as_replay() {
     assert_eq!(err, RatchetError::ReplayDetected);
     assert_eq!(snapshot(&alice), before);
 }
+
+#[test]
+fn sending_counter_exhaustion_does_not_mutate_state() {
+    let (mut sender, _) = pair_states();
+    sender.ns = u32::MAX;
+
+    let id = [0x11; 16];
+    let sender_device = [0x22; 16];
+    let recipient_device = [0x33; 16];
+
+    let header = NormalMessageHeader {
+        ratchet_public: sender.dhs_pub,
+        previous_chain_length: sender.pn,
+        sequence_number: sender.ns,
+    };
+
+    let header_bytes = header.encode().unwrap();
+    let before = snapshot(&sender);
+
+    let error = encrypt_message(
+        &mut sender,
+        env(
+            &id,
+            &sender_device,
+            &recipient_device,
+            1,
+            &header_bytes,
+            &[],
+        ),
+        &header,
+        b"counter exhaustion test",
+    )
+    .unwrap_err();
+
+    assert_eq!(error, RatchetError::MessageNumberExhausted);
+    assert_eq!(
+        snapshot(&sender),
+        before,
+        "sending state must remain unchanged after counter exhaustion"
+    );
+}
+
+#[test]
+fn receiving_counter_exhaustion_does_not_mutate_state() {
+    let (_, mut receiver) = pair_states();
+    receiver.nr = u32::MAX;
+
+    let id = [0x41; 16];
+    let sender_device = [0x52; 16];
+    let recipient_device = [0x63; 16];
+
+    let header = NormalMessageHeader {
+        ratchet_public: receiver.dhr_pub.unwrap(),
+        previous_chain_length: receiver.pn,
+        sequence_number: receiver.nr,
+    };
+
+    let header_bytes = header.encode().unwrap();
+    let before = snapshot(&receiver);
+
+    let error = decrypt_message(
+        &mut receiver,
+        env(
+            &id,
+            &sender_device,
+            &recipient_device,
+            1,
+            &header_bytes,
+            &[],
+        ),
+    )
+    .unwrap_err();
+
+    assert_eq!(error, RatchetError::MessageNumberExhausted);
+    assert_eq!(
+        snapshot(&receiver),
+        before,
+        "receiving state must remain unchanged after counter exhaustion"
+    );
+}

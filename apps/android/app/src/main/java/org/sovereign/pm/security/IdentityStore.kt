@@ -35,6 +35,44 @@ internal class IdentityStore(
         if (hasAnyStorageArtifact()) restoreExisting() else createAndPersist()
     }
 
+    /**
+     * Unwraps the local Storage DEK for one synchronous operation.
+     *
+     * The callback must not retain, copy, or otherwise persist the supplied array. The array is
+     * zeroed as soon as the callback returns or throws. Do not perform network I/O in this block.
+     * Callers should use the key only to invoke native operations that encrypt/decrypt local data.
+     */
+    internal fun <T> withStorageKey(block: (ByteArray) -> T): T = synchronized(lock) {
+        if (!hasAnyStorageArtifact()) {
+            throw IllegalStateException("Identity storage is not initialized; refusing to create a storage key.")
+        }
+
+        val fileBytes = readBoundedRecord()
+        try {
+            validateHeaderAndLength(fileBytes)
+            val wrappedKey = fileBytes.copyOfRange(HEADER.size, HEADER.size + WRAPPED_DEK_BYTES)
+            try {
+                val storageKey = platformKek.unwrap(wrappedKey)
+                try {
+                    if (storageKey.size != DEK_BYTES) {
+                        throw IllegalStateException("Stored identity could not be authenticated; storage access refused.")
+                    }
+                    val result = block(storageKey)
+                    check(result !== storageKey) {
+                        "Storage DEK must not be returned from its scoped callback."
+                    }
+                    result
+                } finally {
+                    storageKey.fill(0)
+                }
+            } finally {
+                wrappedKey.fill(0)
+            }
+        } finally {
+            fileBytes.fill(0)
+        }
+    }
+
     private fun createAndPersist(): IdentityLoadResult {
         // A surviving Keystore alias with no record could mean the record was deleted or a
         // previous save was interrupted. Fail closed rather than silently minting a new identity.

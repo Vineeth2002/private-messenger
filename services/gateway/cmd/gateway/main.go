@@ -3,9 +3,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -23,6 +25,7 @@ import (
 	"github.com/sovereign-messenger/private-messenger/services/gateway/internal/kt"
 	"github.com/sovereign-messenger/private-messenger/services/gateway/internal/messages"
 	"github.com/sovereign-messenger/private-messenger/services/gateway/internal/recoveryratelimit"
+	"github.com/sovereign-messenger/private-messenger/services/gateway/internal/signedprekeyv1"
 )
 
 func main() {
@@ -37,6 +40,10 @@ func main() {
 	deviceRequestAuthEnabled := os.Getenv("GATEWAY_ENABLE_DEVICE_REQUEST_AUTH") == "1"
 	recoveryAPIEnabled := os.Getenv("GATEWAY_ENABLE_RECOVERY_API") == "1"
 	initialBootstrapEnabled := os.Getenv("GATEWAY_ENABLE_INITIAL_ACCOUNT_BOOTSTRAP") == "1"
+	candidateEnrollmentEnabled := os.Getenv("GATEWAY_ENABLE_CANDIDATE_ENROLLMENT") == "1"
+	candidateSignedPrekeysEnabled := os.Getenv("GATEWAY_ENABLE_CANDIDATE_SIGNED_PREKEYS") == "1"
+	candidateDeviceKTPublicationEnabled := os.Getenv("GATEWAY_ENABLE_CANDIDATE_DEVICE_KT_PUBLICATION") == "1"
+	candidateKTProofsEnabled := os.Getenv("GATEWAY_ENABLE_CANDIDATE_KT_PROOFS") == "1"
 	if initialBootstrapEnabled && databaseURL == "" {
 		log.Fatal("GATEWAY_DATABASE_URL is required when initial-account bootstrap is enabled")
 	}
@@ -53,6 +60,15 @@ func main() {
 	}
 	if deviceRequestAuthEnabled && databaseURL == "" {
 		log.Fatal("GATEWAY_DATABASE_URL is required when per-device request authentication is enabled")
+	}
+	if candidateSignedPrekeysEnabled && databaseURL == "" {
+		log.Fatal("GATEWAY_DATABASE_URL is required when candidate signed-prekey routes are enabled")
+	}
+	if candidateDeviceKTPublicationEnabled && databaseURL == "" {
+		log.Fatal("GATEWAY_DATABASE_URL is required when candidate device KT publication is enabled")
+	}
+	if candidateKTProofsEnabled && databaseURL == "" {
+		log.Fatal("GATEWAY_DATABASE_URL is required when candidate KT proofs are enabled")
 	}
 	if deviceRequestAuthEnabled && os.Getenv("GATEWAY_ENABLE_DEMO_MESSAGE_RELAY") != "1" {
 		log.Fatal("GATEWAY_ENABLE_DEMO_MESSAGE_RELAY=1 is required when per-device request authentication is enabled")
@@ -128,14 +144,123 @@ func main() {
 			log.Printf("demo message relay disabled")
 		}
 
+		if candidateKTProofsEnabled {
+			var ktProofSchemaReady bool
+			checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			err := db.QueryRowContext(checkCtx, `SELECT
+				to_regclass('public.transparency_current_state') IS NOT NULL AND
+				to_regclass('public.transparency_history_entries') IS NOT NULL AND
+				to_regclass('public.transparency_state') IS NOT NULL AND
+				EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='transparency_current_state' AND column_name='leaf_cbor')`).Scan(&ktProofSchemaReady)
+			checkCancel()
+			if err != nil {
+				log.Fatalf("check candidate KT proof schema: %v", err)
+			}
+			if !ktProofSchemaReady {
+				log.Fatal("candidate KT proofs require current-state leaf bytes and KT history migrations")
+			}
+			proofState := kt.NewPostgresTransparencyStateStore(db)
+			proofService := kt.NewTransparencyProofService(proofState, sthPublisher)
+			handler = gwhttp.NewHandlerWithCandidateKTProofs(handler, proofService)
+			log.Printf("WARNING: candidate KT proof retrieval enabled; clients must independently verify signatures, inclusion, consistency, pinned log identity, and witness quorum")
+		}
+
+		if candidateDeviceKTPublicationEnabled {
+			var ktPublicationSchemaReady bool
+			checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			err := db.QueryRowContext(checkCtx, `SELECT
+				to_regclass('public.accounts') IS NOT NULL AND
+				to_regclass('public.devices') IS NOT NULL AND
+				to_regclass('public.authorization_accounts') IS NOT NULL AND
+				to_regclass('public.authorization_devices') IS NOT NULL AND
+				to_regclass('public.device_request_nonces') IS NOT NULL AND
+				to_regclass('public.account_recovery_requests') IS NOT NULL AND
+				to_regclass('public.transparency_current_state') IS NOT NULL AND
+				to_regclass('public.transparency_history_entries') IS NOT NULL AND
+				to_regclass('public.transparency_state') IS NOT NULL AND
+				EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='transparency_current_state' AND column_name='leaf_cbor') AND
+				EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='transparency_history_entries' AND column_name='leaf_cbor')`).Scan(&ktPublicationSchemaReady)
+			checkCancel()
+			if err != nil {
+				log.Fatalf("check candidate device KT publication schema: %v", err)
+			}
+			if !ktPublicationSchemaReady {
+				log.Fatal("candidate device KT publication requires device, authorization, recovery, and KT migrations")
+			}
+			logIDBytes, err := hex.DecodeString(os.Getenv("GATEWAY_KT_LOG_ID"))
+			if err != nil || len(logIDBytes) != 32 {
+				log.Fatal("GATEWAY_KT_LOG_ID must be 64 hexadecimal characters when candidate device KT publication is enabled")
+			}
+			var nonZeroLogID bool
+			for _, b := range logIDBytes {
+				if b != 0 {
+					nonZeroLogID = true
+					break
+				}
+			}
+			if !nonZeroLogID {
+				log.Fatal("GATEWAY_KT_LOG_ID must not be all zeroes")
+			}
+			var logID [32]byte
+			copy(logID[:], logIDBytes)
+			stateStore := kt.NewPostgresTransparencyStateStore(db)
+			publication, err := kt.NewTransparencyPublicationService(stateStore, logPrivate, logID)
+			if err != nil {
+				log.Fatalf("configure candidate device KT publication: %v", err)
+			}
+			devicePublication, err := kt.NewPostgresDeviceLeafPublicationService(
+				db,
+				authorization.NewPostgresAuthorizer(db),
+				publication,
+			)
+			if err != nil {
+				log.Fatalf("configure device-bound KT publication: %v", err)
+			}
+			handler = gwhttp.NewHandlerWithCandidateKTDevicePublication(
+				handler,
+				devicePublication,
+				stateStore,
+				deviceauth.NewPostgresRequestAuthenticator(db),
+			)
+			log.Printf("WARNING: candidate device KT publication enabled; route is candidate-only and not production-ready")
+		}
+
+		if candidateSignedPrekeysEnabled {
+			var signedPrekeySchemaReady bool
+			checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			err := db.QueryRowContext(checkCtx, `SELECT
+				to_regclass('public.accounts') IS NOT NULL AND
+				to_regclass('public.devices') IS NOT NULL AND
+				to_regclass('public.signed_prekeys') IS NOT NULL AND
+				to_regclass('public.authorization_accounts') IS NOT NULL AND
+				to_regclass('public.authorization_devices') IS NOT NULL AND
+				to_regclass('public.device_request_nonces') IS NOT NULL AND
+				to_regclass('public.account_recovery_requests') IS NOT NULL AND
+				to_regclass('public.transparency_current_state') IS NOT NULL AND
+				EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='transparency_current_state' AND column_name='leaf_cbor')`).Scan(&signedPrekeySchemaReady)
+			checkCancel()
+			if err != nil {
+				log.Fatalf("check candidate signed-prekey schema: %v", err)
+			}
+			if !signedPrekeySchemaReady {
+				log.Fatal("candidate signed-prekey routes require migrations 0001, 0003, 0004, 0006, and 0008")
+			}
+			handler = gwhttp.NewHandlerWithCandidateSignedPrekeys(
+				handler,
+				signedprekeyv1.NewPostgresStore(db),
+				deviceauth.NewPostgresRequestAuthenticator(db),
+			)
+			log.Printf("WARNING: candidate signed-prekey API enabled; candidate contract and lifecycle are not frozen and this route is not production-ready")
+		}
+
 		if initialBootstrapEnabled {
 			var bootstrapSchemaReady bool
 			checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			err := db.QueryRowContext(checkCtx, `SELECT
-				to_regclass('public.initial_account_bootstrap_challenges') IS NOT NULL AND
-				to_regclass('public.authorization_accounts') IS NOT NULL AND
-				to_regclass('public.authorization_devices') IS NOT NULL AND
-				to_regclass('public.authorization_events') IS NOT NULL`).Scan(&bootstrapSchemaReady)
+to_regclass('public.initial_account_bootstrap_challenges') IS NOT NULL AND
+to_regclass('public.authorization_accounts') IS NOT NULL AND
+to_regclass('public.authorization_devices') IS NOT NULL AND
+to_regclass('public.authorization_events') IS NOT NULL`).Scan(&bootstrapSchemaReady)
 			checkCancel()
 			if err != nil {
 				log.Fatalf("check initial-account bootstrap schema: %v", err)
@@ -146,8 +271,7 @@ func main() {
 			handler = gwhttp.NewHandlerWithInitialAccountBootstrap(handler, authorization.NewPostgresAuthorizer(db))
 			log.Printf("WARNING: initial-account bootstrap enabled; this candidate flow is not production-ready")
 		}
-
-		if os.Getenv("GATEWAY_ENABLE_CANDIDATE_ENROLLMENT") == "1" {
+		if candidateEnrollmentEnabled {
 			handler = gwhttp.NewHandlerWithCandidateEnrollment(
 				handler,
 				authorization.NewPostgresAuthorizer(db),
@@ -222,12 +346,37 @@ func main() {
 }
 
 func loadKTSigningKey(path string) (ed25519.PrivateKey, error) {
-	seed, err := os.ReadFile(path)
+	fileBytes, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read log seed: %w", err)
 	}
+	defer func() {
+		for i := range fileBytes {
+			fileBytes[i] = 0
+		}
+	}()
+
+	trimmed := bytes.TrimSpace(fileBytes)
+	seed := fileBytes
+	if len(trimmed) == base64.StdEncoding.EncodedLen(ed25519.SeedSize) {
+		decoded := make([]byte, ed25519.SeedSize)
+		n, decodeErr := base64.StdEncoding.Decode(decoded, trimmed)
+		if decodeErr != nil || n != ed25519.SeedSize {
+			for i := range decoded {
+				decoded[i] = 0
+			}
+			return nil, errors.New("transparency log seed file is neither a 32-byte raw seed nor a Base64-encoded 32-byte seed")
+		}
+		defer func() {
+			for i := range decoded {
+				decoded[i] = 0
+			}
+		}()
+		seed = decoded
+	}
+
 	if len(seed) != ed25519.SeedSize {
-		return nil, errors.New("transparency log seed must be exactly 32 bytes")
+		return nil, errors.New("transparency log seed must be exactly 32 bytes (raw or Base64 encoded)")
 	}
 
 	return ed25519.NewKeyFromSeed(seed), nil

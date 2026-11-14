@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/sovereign-messenger/private-messenger/services/gateway/internal/signedprekeyv1"
 )
 
 var (
@@ -95,13 +97,17 @@ WHERE device_id = $1::uuid
 ORDER BY created_at ASC`
 
 const selectSignedPrekeysSQL = `
-SELECT device_id::text,
-       spk_id,
-       spk_pub,
-       signature
-FROM signed_prekeys
-WHERE device_id = $1::uuid
-ORDER BY spk_id ASC`
+SELECT sp.device_id::text,
+       sp.spk_id,
+       sp.spk_pub,
+       sp.signature
+FROM signed_prekeys AS sp
+JOIN devices AS d ON d.device_id = sp.device_id
+JOIN accounts AS a ON a.account_id = d.account_id
+WHERE sp.device_id = $1::uuid
+  AND d.revoked_at IS NULL
+  AND d.account_epoch = a.account_epoch
+ORDER BY sp.spk_id ASC`
 
 func (d *PostgresDirectory) Get(ctx context.Context, accountID, deviceID [16]byte) (Device, error) {
 	if d == nil || d.db == nil {
@@ -273,8 +279,14 @@ func decodeSignedPrekey(deviceText string, spkID int64, spkPub, signature []byte
 	if deviceID != expectedDeviceID {
 		return SignedPrekey{}, errors.New("persisted signed-prekey device id mismatch")
 	}
+	if spkID < 1 || uint64(spkID) > uint64(^uint32(0)) {
+		return SignedPrekey{}, errors.New("persisted signed-prekey ID is outside the V1 range 1..=2^32-1")
+	}
 	if len(spkPub) != 32 || len(signature) != 64 {
 		return SignedPrekey{}, errors.New("invalid persisted signed-prekey lengths")
+	}
+	if err := signedprekeyv1.ValidateX25519PublicKey(spkPub); err != nil {
+		return SignedPrekey{}, fmt.Errorf("invalid persisted signed-prekey public key: %w", err)
 	}
 	var out SignedPrekey
 	out.DeviceID = deviceID

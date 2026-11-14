@@ -16,6 +16,10 @@ pub mod device_request_auth_v1;
 pub mod cbor;
 #[deny(unsafe_code)]
 pub mod double_ratchet;
+#[allow(dead_code)]
+mod storage_record;
+
+pub(crate) mod ratchet_persistence;
 #[deny(unsafe_code)]
 pub mod hpke;
 #[deny(unsafe_code)]
@@ -40,6 +44,10 @@ pub use ffi::{
     recovery_initialize, recovery_mnemonic_generate,
     AccountContext, CryptoError, RecoveryContext,
 };
+
+pub use ffi::{MessagingSession, SignedPrekeyContext};
+
+pub use ffi::{kt_verify_device_proof_v1, kt_verify_signed_prekey_binding_v1, verify_signed_prekey_for_peer_v1};
 
 // UniFFI-generated C-ABI scaffolding must remain at crate root.
 uniffi::include_scaffolding!("pm_crypto_core");

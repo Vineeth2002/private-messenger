@@ -37,6 +37,7 @@ var (
 	ErrTransparencyStateNotFound       = errors.New("current transparency state not found")
 	ErrTransparencyPublicationMismatch = errors.New("history entry does not match current-state leaf")
 	ErrTransparencyLeafMismatch        = errors.New("signed transparency leaf does not match current-state leaf")
+	ErrTransparencyLogIdentityMismatch = errors.New("persisted transparency STH uses a different log identity")
 )
 
 func NewPostgresTransparencyStateStore(db SQLExecutor) *PostgresTransparencyStateStore {
@@ -354,6 +355,42 @@ func (s *PostgresTransparencyStateStore) CurrentState(ctx context.Context) ([]SM
 		return nil, err
 	}
 	return out, nil
+}
+
+// CurrentLeaf returns the exact signed leaf bytes for a committed current-state key/hash.
+// Both key and hash are supplied so a stale or substituted row fails closed.
+func (s *PostgresTransparencyStateStore) CurrentLeaf(ctx context.Context, key, leafHash [32]byte) ([]byte, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("nil transparency state store")
+	}
+	queryer, ok := s.db.(interface {
+		QueryRowContext(context.Context, string, ...any) *sql.Row
+	})
+	if !ok {
+		return nil, errors.New("transparency store requires query-capable PostgreSQL handle")
+	}
+	var raw []byte
+	err := queryer.QueryRowContext(ctx, `
+SELECT leaf_cbor
+FROM transparency_current_state
+WHERE smt_key = $1 AND leaf_hash = $2`, key[:], leafHash[:]).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrTransparencyStateNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) == 0 {
+		return nil, errors.New("persisted current-state leaf bytes are empty")
+	}
+	leaf, computedHash, err := VerifyTransparencyLeafV1(raw)
+	if err != nil {
+		return nil, fmt.Errorf("persisted current-state leaf is invalid: %w", err)
+	}
+	if SMTKey(leaf.AccountID, leaf.DeviceID) != key || computedHash != leafHash {
+		return nil, ErrTransparencyLeafMismatch
+	}
+	return append([]byte(nil), raw...), nil
 }
 
 func (s *PostgresTransparencyStateStore) HistoryEntries(ctx context.Context) ([][]byte, error) {

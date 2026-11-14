@@ -128,6 +128,7 @@ pub fn encrypt_message(
     if envelope.ratchet_header_bytes != header_bytes.as_slice() {
         return Err(RatchetError::InvalidHeader);
     }
+
     if header.ratchet_public != state.dhs_pub
         || header.previous_chain_length != state.pn
         || header.sequence_number != state.ns
@@ -139,7 +140,16 @@ pub fn encrypt_message(
         .ck_s
         .as_ref()
         .ok_or(RatchetError::InvalidInitialState)?;
+
+    // Reject counter exhaustion before deriving keys or encrypting.
+    // No ratchet state is modified when this check fails.
+    let next_ns = state
+        .ns
+        .checked_add(1)
+        .ok_or(RatchetError::MessageNumberExhausted)?;
+
     let (ck_next, k_msg) = kdf_ck(ck_s);
+
     let aad = aad_msg(
         envelope.protocol_version,
         envelope.envelope_id,
@@ -149,8 +159,10 @@ pub fn encrypt_message(
         false,
         &header_bytes,
     );
+
     let cipher =
         ChaCha20Poly1305::new_from_slice(k_msg.as_ref()).map_err(|_| RatchetError::AeadEncrypt)?;
+
     let ciphertext = cipher
         .encrypt(
             Nonce::from_slice(&ZERO_MESSAGE_NONCE),
@@ -161,11 +173,10 @@ pub fn encrypt_message(
         )
         .map_err(|_| RatchetError::AeadEncrypt)?;
 
-    state.ns = state
-        .ns
-        .checked_add(1)
-        .ok_or(RatchetError::InvalidInitialState)?;
+    // Commit only after successful encryption.
+    state.ns = next_ns;
     state.ck_s = Some(ck_next);
+
     Ok((header_bytes, ciphertext))
 }
 
@@ -376,11 +387,7 @@ fn decrypt_new_ratchet_message_inner(
     envelope: MessageEnvelopeRef<'_>,
     new_dhs_priv: RatchetKey,
 ) -> Result<Vec<u8>, RatchetError> {
-    decrypt_new_ratchet_message_with_secret(
-        state,
-        envelope,
-        StaticSecret::from(new_dhs_priv),
-    )
+    decrypt_new_ratchet_message_with_secret(state, envelope, StaticSecret::from(new_dhs_priv))
 }
 
 fn decrypt_new_ratchet_message_with_secret(
@@ -427,7 +434,6 @@ fn decrypt_new_ratchet_message_with_secret(
 
     let dh_recv = dh_shared_secret(&state.dhs_priv, &header.ratchet_public)?;
     let (rk_temp, ck_r_initial) = kdf_rk(&state.rk, dh_recv.as_bytes());
-
 
     let new_dh_out = {
         let peer = PublicKey::from(header.ratchet_public);

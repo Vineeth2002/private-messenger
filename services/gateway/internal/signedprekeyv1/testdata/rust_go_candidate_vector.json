@@ -1,0 +1,11 @@
+{
+  "contract": "PM-V1-SIGNED-PREKEY-v1",
+  "dsk_public_hex": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+  "account_id_hex": "0102030405060708090a0b0c0d0e0f10",
+  "account_epoch": 3,
+  "device_id_hex": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+  "spk_id": 7,
+  "spk_public_hex": "132c442be010fbd57e72603328aa76e71fccc1503aae219327d14d9c9993f472",
+  "signature_hex": "236dbcc31451395ca05f4ac2d7648b594437cce5cd5a8acda8eb152c2a7ca22ba071ea1f4aef481181d9619c504e09ac3f30eef2f562ac5a12c8094ae3909d0f",
+  "raw_signed_prekey_hex": "a7010102500102030405060708090a0b0c0d0e0f1003030450a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0507065820132c442be010fbd57e72603328aa76e71fccc1503aae219327d14d9c9993f472075840236dbcc31451395ca05f4ac2d7648b594437cce5cd5a8acda8eb152c2a7ca22ba071ea1f4aef481181d9619c504e09ac3f30eef2f562ac5a12c8094ae3909d0f"
+}
