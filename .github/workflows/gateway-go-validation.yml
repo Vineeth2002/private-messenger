@@ -1,0 +1,108 @@
+name: gateway-go-validation
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gateway-go-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gateway:
+    name: Gateway Go tests, vet, and PostgreSQL integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GO_VERSION: "1.22.6"
+      PM_ENROLLMENT_TEST_DATABASE_URL: postgres://postgres:pm-ci-only-password@127.0.0.1:5432/pm_enrollment_test_20261030
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+          cache-dependency-path: services/gateway/go.sum
+
+      - name: Install and start local PostgreSQL 16
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-16 postgresql-client-16
+          sudo systemctl start postgresql
+          sudo pg_isready --host 127.0.0.1 --port 5432
+
+      - name: Create the dedicated disposable integration database
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo -u postgres psql --set ON_ERROR_STOP=1 \
+            --command "ALTER ROLE postgres WITH PASSWORD 'pm-ci-only-password';"
+          sudo -u postgres createdb --owner=postgres pm_enrollment_test_20261030
+
+          PGPASSWORD=pm-ci-only-password psql \
+            --host 127.0.0.1 \
+            --port 5432 \
+            --username postgres \
+            --dbname pm_enrollment_test_20261030 \
+            --set ON_ERROR_STOP=1 \
+            --command "SELECT current_database(), host(inet_server_addr()), inet_server_port(), current_schema();"
+
+      - name: Apply every Gateway SQL migration in order
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          migrations=(services/gateway/migrations/*.sql)
+          if (( ${#migrations[@]} == 0 )); then
+            echo "No Gateway SQL migrations found."
+            exit 1
+          fi
+
+          for migration in "${migrations[@]}"; do
+            echo "Applying ${migration}"
+            PGPASSWORD=pm-ci-only-password psql \
+              --host 127.0.0.1 \
+              --port 5432 \
+              --username postgres \
+              --dbname pm_enrollment_test_20261030 \
+              --set ON_ERROR_STOP=1 \
+              --file "${migration}"
+          done
+
+      - name: Verify database identity and current schema contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$(PGPASSWORD=pm-ci-only-password psql \
+            --host 127.0.0.1 \
+            --port 5432 \
+            --username postgres \
+            --dbname pm_enrollment_test_20261030 \
+            --tuples-only --no-align \
+            --command "SELECT current_database() || '|' || host(inet_server_addr()) || '|' || inet_server_port() || '|' || current_schema() || '|' || EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'authorization_events' AND column_name = 'cert_cbor');")"
+          echo "PostgreSQL integration target: ${result}"
+          test "${result}" = "pm_enrollment_test_20261030|127.0.0.1|5432|public|true"
+
+      - name: Verify Go modules
+        working-directory: services/gateway
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Run Gateway static analysis
+        working-directory: services/gateway
+        run: go vet ./...
+
+      - name: Run the complete Gateway test suite with PostgreSQL integration enabled
+        working-directory: services/gateway
+        env:
+          PM_ENROLLMENT_TEST_DATABASE_URL: ${{ env.PM_ENROLLMENT_TEST_DATABASE_URL }}
+        run: go test -p 1 -count=1 ./...
