@@ -14,20 +14,20 @@ The earlier README statement that Android only presents a diagnostics/identity s
 - Gateway message submission, fetch and ACK through the current demo message API.
 - Foreground synchronization by polling while the messaging panel is active.
 
-This is meaningful alpha functionality, but it is not a fully validated end-to-end product. The current client uses the /v1/demo/messages surface, manual fingerprint trust instead of witness-backed production trust, and foreground polling rather than production background delivery. The repository does not yet contain an Android acceptance test that proves the complete two-client Android â†’ Gateway â†’ PostgreSQL â†’ Android path, including reply and restart/restore.
+This is meaningful alpha functionality, but it is not a fully validated end-to-end product. The current client uses the `/v1/demo/messages` surface, manual fingerprint trust instead of witness-backed production trust, and foreground polling rather than production background delivery. The repository does not yet contain an Android acceptance test that proves the complete two-client Android-to-Gateway-to-PostgreSQL-to-Android path, including reply and restart/restore.
 
 ## Roadmap status
 
-The canonical roadmap uses fixed stages P0â€“P9. The current tracked baseline supports only these status statements:
+The canonical roadmap uses fixed stages P0-P9. The current tracked baseline supports only these status statements:
 
 | Stage | Focus | Current status |
 |---|---|---|
 | P0 | Scope and evidence baseline | In progress; no product-completion weight |
 | P1 | Gateway platform foundation | In progress; 12% weight |
 | P2 | Identity, enrollment, authorization and recovery | In progress; 12% weight |
-| P3â€“P9 | Remaining canonical stages | Names, weights and exit criteria are not yet present in the tracked baseline register. Do not infer them or calculate an overall completion percentage. |
+| P3-P9 | Remaining canonical stages | Names, weights and exit criteria are not yet present in the tracked baseline register. Do not infer them or calculate an overall completion percentage. |
 
-The detailed evidence-based review is [the P0â€“P2 baseline audit](docs/ROADMAP_P0_P2_CURRENT_BASELINE_2026-11-15.md). The older Phase A/Phase B gate records remain historical project evidence; they are not a replacement for the canonical P0â€“P9 roadmap.
+The detailed evidence-based review is [the P0-P2 baseline audit](docs/ROADMAP_P0_P2_CURRENT_BASELINE_2026-11-15.md). The older Phase A/Phase B gate records remain historical project evidence; they are not a replacement for the canonical P0-P9 roadmap.
 
 ## What is not complete
 
@@ -44,7 +44,7 @@ The detailed evidence-based review is [the P0â€“P2 baseline audit](docs/ROA
 
 ## Gateway and CI evidence
 
-The dedicated Gateway validation workflow runs Go tests, go vet, and PostgreSQL-backed integration validation. The workflow was restored and merged in [PR #17](https://github.com/Vineeth2002/private-messenger/pull/17); its successful checks establish the configured Gateway test coverage, not full Android product behavior or production security.
+The dedicated Gateway validation workflow runs Go tests, `go vet`, and PostgreSQL-backed integration validation. The workflow was restored and merged in [PR #17](https://github.com/Vineeth2002/private-messenger/pull/17); its successful checks establish the configured Gateway test coverage, not full Android product behavior or production security.
 
 A passing CI workflow is evidence only for the jobs and test paths it actually runs. A plain local Go test command does not prove PostgreSQL integration ran unless the required test database configuration is present. See the [Gateway validation workflow](.github/workflows/gateway-go-validation.yml) for the database-backed CI setup.
 
@@ -54,13 +54,42 @@ Hosted-in-India does not mean all packets stay in India. APNs/FCM are external b
 
 ## Validation
 
-Use the [Windows setup guide](docs/LOCAL_SETUP_WINDOWS.md) for the supported local toolchain and commands. The native Rust test suite, Gateway Go tests, shared-vector parity checks, Android build/test jobs and identity-storage instrumentation cover separate components. They do not collectively prove the complete app-to-app messaging path.
+Use the [Windows setup guide](docs/LOCAL_SETUP_WINDOWS.md) for the supported local toolchain and prerequisites.
 
-For PostgreSQL-backed Gateway validation, follow the dedicated [Gateway CI workflow](.github/workflows/gateway-go-validation.yml), which provisions a disposable PostgreSQL database, applies migrations and runs the database-enabled Go test suite.
+Windows + VS Code (Command Prompt):
+```powershell
+py -m pip install cryptography
+py tools\gen_vectors.py
+py tools\check_vectors.py
+py tools\build_normal_linear_vectors.py
+py tools\build_reorder_vectors.py
+py tools\build_hpke_push_vectors.py
+py tools\check_normal_vectors.py
+py tools\check_reorder_vectors.py
+py tools\check_hpke_push_vectors.py
+cd native\crypto-core
+cargo test --locked
+cd ..\..\services\gateway
+go test ./...
+```
+
+Linux / macOS (bash):
+```bash
+python3 -m pip install cryptography
+python3 tools/gen_vectors.py && git diff --exit-code test-vectors
+python3 tools/check_vectors.py
+cargo test --locked --manifest-path native/crypto-core/Cargo.toml
+(cd services/gateway && go mod download && go mod verify && go test ./...)
+bash tools/run_all.sh
+```
+
+The standard local `go test ./...` invocation does not, by itself, prove that PostgreSQL integration tests ran. For PostgreSQL-backed Gateway validation, use the dedicated [Gateway CI workflow](.github/workflows/gateway-go-validation.yml), which provisions a disposable PostgreSQL database, applies migrations and runs the database-enabled Go test suite.
+
+The native Rust test suite, Gateway Go tests, shared-vector parity checks, Android build/test jobs and identity-storage instrumentation cover separate components. They do not collectively prove the complete app-to-app messaging path.
 
 ## Project records
 
-- [P0â€“P2 implementation baseline audit](docs/ROADMAP_P0_P2_CURRENT_BASELINE_2026-11-15.md)
+- [P0-P2 implementation baseline audit](docs/ROADMAP_P0_P2_CURRENT_BASELINE_2026-11-15.md)
 - [Production release gate](docs/PRIVATE_MESSENGER_RELEASE_GATE.md)
 - [Phase B gate record](docs/PHASE_B_GATE.md)
 - [Implementation notes](docs/IMPLEMENTATION_NOTES.md)
