@@ -17,7 +17,7 @@ import (
 
 const (
 	integrationDSNEnv = "PM_ENROLLMENT_TEST_DATABASE_URL"
-	integrationDBName = "pm_enrollment_bootstrap_it_20261104"
+	integrationDBName = "pm_enrollment_test_20261030"
 )
 
 func openRateLimitIntegrationDB(t *testing.T) *sql.DB {

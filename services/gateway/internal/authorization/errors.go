@@ -5,7 +5,6 @@ import "errors"
 var (
 	ErrNilAuthorizer               = errors.New("authorization: nil authorizer")
 	ErrAccountNotFound             = errors.New("authorization: account not found")
-	ErrAccountAdoptionRequired     = errors.New("authorization: account adoption required")
 	ErrAccountExists               = errors.New("authorization: account already initialized")
 	ErrAccountLocked               = errors.New("authorization: account is recovery-locked")
 	ErrDeviceExists                = errors.New("authorization: device already authorized")

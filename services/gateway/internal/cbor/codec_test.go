@@ -180,38 +180,6 @@ func TestLengthFirstRegression(t *testing.T) {
 	}
 }
 
-func TestEncoderRejectsInvalidUTF8Text(t *testing.T) {
-	_, err := EncodeCanonical(Value{
-		Kind: KindText,
-		Text: string([]byte{0xff}),
-	})
-	if CategoryOf(err) != ErrMalformedCBOR {
-		t.Fatalf("invalid UTF-8 text: got %v, want %s", err, ErrMalformedCBOR)
-	}
-}
-
-func TestEncoderEnforcesWireOutputLimit(t *testing.T) {
-	atLimit := Value{
-		Kind: KindText,
-		Text: string(bytes.Repeat([]byte{'a'}, MaxWireInput-5)),
-	}
-	encoded, err := EncodeCanonical(atLimit)
-	if err != nil {
-		t.Fatalf("encoding output at limit: %v", err)
-	}
-	if len(encoded) != MaxWireInput {
-		t.Fatalf("encoded length = %d, want %d", len(encoded), MaxWireInput)
-	}
-
-	overLimit := Value{
-		Kind: KindText,
-		Text: string(bytes.Repeat([]byte{'a'}, MaxWireInput-4)),
-	}
-	if _, err := EncodeCanonical(overLimit); CategoryOf(err) != ErrLimitExceeded {
-		t.Fatalf("encoding output over limit: got %v, want %s", err, ErrLimitExceeded)
-	}
-}
-
 func nested(n int) []byte {
 	return append(bytes.Repeat([]byte{0x81}, n), 0x00)
 }

@@ -17,6 +17,7 @@ use std::collections::BTreeMap;
 use thiserror::Error;
 
 use crate::cbor::{self, CborError, Value};
+use crate::x25519_validation::is_usable_x25519_public_key;
 
 pub const PROTOCOL_VERSION: u64 = 1;
 
@@ -276,7 +277,10 @@ pub fn sign_leaf(
 
     push_pk: [u8; 32],
 ) -> Result<Vec<u8>, TransparencyV1Error> {
-    if epoch < 1 {
+    if epoch < 1
+        || !is_usable_x25519_public_key(&ddhk_pub)
+        || !is_usable_x25519_public_key(&spk_pub)
+    {
         return Err(TransparencyV1Error::InvalidField);
     }
 
@@ -339,6 +343,10 @@ pub fn decode_leaf(bytes: &[u8]) -> Result<TransparencyLeafV1, TransparencyV1Err
     let cert_dh = take::<64>(&mut fields, 6)?;
 
     let spk_pub = take::<32>(&mut fields, 7)?;
+
+    if !is_usable_x25519_public_key(&ddhk_pub) || !is_usable_x25519_public_key(&spk_pub) {
+        return Err(TransparencyV1Error::InvalidField);
+    }
 
     let push_pk = take::<32>(&mut fields, 8)?;
 

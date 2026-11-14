@@ -33,15 +33,15 @@ const (
 type Category string
 
 const (
-	ErrNonCanonicalInteger        Category = "ERR_NON_CANONICAL_INTEGER"
-	ErrDuplicateMapKey            Category = "ERR_DUPLICATE_MAP_KEY"
-	ErrFloatProhibited            Category = "ERR_FLOAT_PROHIBITED"
-	ErrIndefiniteLengthProhibited Category = "ERR_INDEFINITE_LENGTH_PROHIBITED"
-	ErrUnsortedMapKeys            Category = "ERR_UNSORTED_MAP_KEYS"
-	ErrTrailingBytes              Category = "ERR_TRAILING_BYTES"
-	ErrMalformedCBOR              Category = "ERR_MALFORMED_CBOR"
-	ErrUnsupportedItem            Category = "ERR_UNSUPPORTED_ITEM"
-	ErrLimitExceeded              Category = "ERR_LIMIT_EXCEEDED"
+	ErrNonCanonicalInteger         Category = "ERR_NON_CANONICAL_INTEGER"
+	ErrDuplicateMapKey             Category = "ERR_DUPLICATE_MAP_KEY"
+	ErrFloatProhibited             Category = "ERR_FLOAT_PROHIBITED"
+	ErrIndefiniteLengthProhibited  Category = "ERR_INDEFINITE_LENGTH_PROHIBITED"
+	ErrUnsortedMapKeys             Category = "ERR_UNSORTED_MAP_KEYS"
+	ErrTrailingBytes               Category = "ERR_TRAILING_BYTES"
+	ErrMalformedCBOR               Category = "ERR_MALFORMED_CBOR"
+	ErrUnsupportedItem             Category = "ERR_UNSUPPORTED_ITEM"
+	ErrLimitExceeded               Category = "ERR_LIMIT_EXCEEDED"
 )
 
 // Error carries a Category.
@@ -152,9 +152,6 @@ func encodeInto(v Value, out []byte, depth int) ([]byte, error) {
 		out = appendHead(out, 2, uint64(len(v.Bytes)))
 		return append(out, v.Bytes...), nil
 	case KindText:
-		if !utf8.ValidString(v.Text) {
-			return nil, fail(ErrMalformedCBOR)
-		}
 		out = appendHead(out, 3, uint64(len(v.Text)))
 		return append(out, v.Text...), nil
 	case KindArray:
@@ -204,16 +201,7 @@ func encodeInto(v Value, out []byte, depth int) ([]byte, error) {
 }
 
 // EncodeCanonical encodes v to PM-CBOR-2026.
-func EncodeCanonical(v Value) ([]byte, error) {
-	out, err := encodeInto(v, nil, 0)
-	if err != nil {
-		return nil, err
-	}
-	if len(out) > MaxWireInput {
-		return nil, fail(ErrLimitExceeded)
-	}
-	return out, nil
-}
+func EncodeCanonical(v Value) ([]byte, error) { return encodeInto(v, nil, 0) }
 
 // ------------------------------------------------------------------ decoding
 

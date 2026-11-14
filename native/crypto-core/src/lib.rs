@@ -53,3 +53,6 @@ pub use ffi::{kt_verify_device_proof_v1, kt_verify_signed_prekey_binding_v1, ver
 uniffi::include_scaffolding!("pm_crypto_core");
 
 pub mod signed_prekey_v1;
+
+#[deny(unsafe_code)]
+mod x25519_validation;
