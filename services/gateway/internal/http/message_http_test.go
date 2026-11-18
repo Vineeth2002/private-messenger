@@ -13,12 +13,12 @@ import (
 )
 
 type fakeMessageDelivery struct {
-	enqueueFn func(context.Context, []byte, time.Time) (messages.MessageEnvelopeV1, error)
+	enqueueFn func(context.Context, []byte, time.Time) (messages.EnqueuedMessage, error)
 	fetchFn   func(context.Context, [16]byte, int) ([]messages.StoredEnvelope, error)
 	ackFn     func(context.Context, [16]byte, [16]byte) error
 }
 
-func (f *fakeMessageDelivery) Enqueue(ctx context.Context, raw []byte, expiresAt time.Time) (messages.MessageEnvelopeV1, error) {
+func (f *fakeMessageDelivery) Enqueue(ctx context.Context, raw []byte, expiresAt time.Time) (messages.EnqueuedMessage, error) {
 	return f.enqueueFn(ctx, raw, expiresAt)
 }
 
@@ -54,7 +54,7 @@ func TestDemoMessageRoutesSupportBearerGuard(t *testing.T) {
 func TestDemoMessageSendUsesDelivery(t *testing.T) {
 	called := false
 	fake := &fakeMessageDelivery{
-		enqueueFn: func(_ context.Context, raw []byte, expiresAt time.Time) (messages.MessageEnvelopeV1, error) {
+		enqueueFn: func(_ context.Context, raw []byte, expiresAt time.Time) (messages.EnqueuedMessage, error) {
 			called = true
 			if string(raw) != "opaque-envelope" {
 				t.Fatalf("raw=%q, want opaque-envelope", raw)
@@ -64,7 +64,10 @@ func TestDemoMessageSendUsesDelivery(t *testing.T) {
 			}
 			var id [16]byte
 			id[0] = 9
-			return messages.MessageEnvelopeV1{EnvelopeID: id, RecipientDeviceID: id}, nil
+			return messages.EnqueuedMessage{
+				Envelope:  messages.MessageEnvelopeV1{EnvelopeID: id, RecipientDeviceID: id},
+				CreatedAt: time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC),
+			}, nil
 		},
 		fetchFn: func(context.Context, [16]byte, int) ([]messages.StoredEnvelope, error) { return nil, nil },
 		ackFn:   func(context.Context, [16]byte, [16]byte) error { return nil },
@@ -77,6 +80,9 @@ func TestDemoMessageSendUsesDelivery(t *testing.T) {
 	if rr.Code != http.StatusAccepted {
 		t.Fatalf("status=%d, want %d; body=%s", rr.Code, http.StatusAccepted, rr.Body.String())
 	}
+	if !strings.Contains(rr.Body.String(), `"created_at":"2026-10-30T10:00:00Z"`) {
+		t.Fatalf("send response omitted canonical created_at: %s", rr.Body.String())
+	}
 	if !called {
 		t.Fatal("delivery Enqueue was not called")
 	}
@@ -85,8 +91,8 @@ func TestDemoMessageSendUsesDelivery(t *testing.T) {
 func TestDemoMessageAckUsesDelivery(t *testing.T) {
 	called := false
 	fake := &fakeMessageDelivery{
-		enqueueFn: func(context.Context, []byte, time.Time) (messages.MessageEnvelopeV1, error) {
-			return messages.MessageEnvelopeV1{}, nil
+		enqueueFn: func(context.Context, []byte, time.Time) (messages.EnqueuedMessage, error) {
+			return messages.EnqueuedMessage{}, nil
 		},
 		fetchFn: func(context.Context, [16]byte, int) ([]messages.StoredEnvelope, error) { return nil, nil },
 		ackFn: func(_ context.Context, deviceID, envelopeID [16]byte) error {
@@ -115,8 +121,8 @@ func TestDemoMessageFetchUsesDelivery(t *testing.T) {
 	gotDevice[0] = 1
 	called := false
 	fake := &fakeMessageDelivery{
-		enqueueFn: func(context.Context, []byte, time.Time) (messages.MessageEnvelopeV1, error) {
-			return messages.MessageEnvelopeV1{}, errors.New("not used")
+		enqueueFn: func(context.Context, []byte, time.Time) (messages.EnqueuedMessage, error) {
+			return messages.EnqueuedMessage{}, errors.New("not used")
 		},
 		fetchFn: func(_ context.Context, deviceID [16]byte, limit int) ([]messages.StoredEnvelope, error) {
 			called = true

@@ -21,18 +21,18 @@ type authenticatedDeliveryStub struct {
 	gotLimit         int
 }
 
-func (*authenticatedDeliveryStub) Enqueue(context.Context, []byte, time.Time) (messages.MessageEnvelopeV1, error) {
-	return messages.MessageEnvelopeV1{}, nil
+func (*authenticatedDeliveryStub) Enqueue(context.Context, []byte, time.Time) (messages.EnqueuedMessage, error) {
+	return messages.EnqueuedMessage{}, nil
 }
 func (*authenticatedDeliveryStub) Fetch(context.Context, [16]byte, int) ([]messages.StoredEnvelope, error) {
 	return nil, nil
 }
 func (*authenticatedDeliveryStub) Ack(context.Context, [16]byte, [16]byte) error { return nil }
 
-func (f *authenticatedDeliveryStub) EnqueueAuthenticated(_ context.Context, _ []byte, _ time.Time, principal messages.AuthenticatedDevice) (messages.MessageEnvelopeV1, error) {
+func (f *authenticatedDeliveryStub) EnqueueAuthenticated(_ context.Context, _ []byte, _ time.Time, principal messages.AuthenticatedDevice) (messages.EnqueuedMessage, error) {
 	f.authEnqueueCalls++
 	f.gotPrincipal = principal
-	return messages.MessageEnvelopeV1{}, nil
+	return messages.EnqueuedMessage{}, nil
 }
 func (f *authenticatedDeliveryStub) FetchAuthenticated(_ context.Context, principal messages.AuthenticatedDevice, limit int) ([]messages.StoredEnvelope, error) {
 	f.authFetchCalls++

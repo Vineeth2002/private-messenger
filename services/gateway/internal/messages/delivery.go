@@ -59,6 +59,13 @@ type StoredEnvelope struct {
 	ExpiresAt  time.Time
 }
 
+// EnqueuedMessage pairs the validated protocol envelope with its database
+// creation timestamp. CreatedAt is server metadata and is not part of Raw.
+type EnqueuedMessage struct {
+	Envelope  MessageEnvelopeV1
+	CreatedAt time.Time
+}
+
 func NewDeliveryService(db sqlDB) *DeliveryService {
 	return &DeliveryService{db: db}
 }
@@ -70,7 +77,7 @@ func (s *DeliveryService) Enqueue(
 	ctx context.Context,
 	rawEnvelope []byte,
 	expiresAt time.Time,
-) (MessageEnvelopeV1, error) {
+) (EnqueuedMessage, error) {
 	return s.enqueue(ctx, rawEnvelope, expiresAt, nil)
 }
 
@@ -82,7 +89,7 @@ func (s *DeliveryService) EnqueueAuthenticated(
 	rawEnvelope []byte,
 	expiresAt time.Time,
 	principal AuthenticatedDevice,
-) (MessageEnvelopeV1, error) {
+) (EnqueuedMessage, error) {
 	return s.enqueue(ctx, rawEnvelope, expiresAt, &principal)
 }
 
@@ -91,28 +98,28 @@ func (s *DeliveryService) enqueue(
 	rawEnvelope []byte,
 	expiresAt time.Time,
 	principal *AuthenticatedDevice,
-) (MessageEnvelopeV1, error) {
+) (EnqueuedMessage, error) {
 	if s == nil || s.db == nil {
-		return MessageEnvelopeV1{}, errors.New("message delivery service is not initialized")
+		return EnqueuedMessage{}, errors.New("message delivery service is not initialized")
 	}
 
 	envelope, err := DecodeMessageEnvelopeV1(rawEnvelope)
 	if err != nil {
-		return MessageEnvelopeV1{}, err
+		return EnqueuedMessage{}, err
 	}
 	if principal != nil && envelope.SenderDeviceID != principal.DeviceID {
-		return MessageEnvelopeV1{}, ErrSenderIdentityMismatch
+		return EnqueuedMessage{}, ErrSenderIdentityMismatch
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return MessageEnvelopeV1{}, fmt.Errorf("begin message delivery transaction: %w", err)
+		return EnqueuedMessage{}, fmt.Errorf("begin message delivery transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	if principal != nil {
 		if err := lockAuthenticatedDeviceTx(ctx, tx, *principal); err != nil {
-			return MessageEnvelopeV1{}, err
+			return EnqueuedMessage{}, err
 		}
 	}
 
@@ -124,12 +131,12 @@ WHERE device_id=$1::uuid
 FOR SHARE
 `, uuidText(envelope.SenderDeviceID)).Scan(&senderRevoked); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return MessageEnvelopeV1{}, ErrSenderNotFound
+			return EnqueuedMessage{}, ErrSenderNotFound
 		}
-		return MessageEnvelopeV1{}, fmt.Errorf("load sender device: %w", err)
+		return EnqueuedMessage{}, fmt.Errorf("load sender device: %w", err)
 	}
 	if senderRevoked.Valid {
-		return MessageEnvelopeV1{}, ErrSenderRevoked
+		return EnqueuedMessage{}, ErrSenderRevoked
 	}
 
 	var accountEpoch int64
@@ -141,18 +148,19 @@ WHERE device_id=$1::uuid
 FOR SHARE
 `, uuidText(envelope.RecipientDeviceID)).Scan(&accountEpoch, &recipientRevoked); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return MessageEnvelopeV1{}, ErrRecipientNotFound
+			return EnqueuedMessage{}, ErrRecipientNotFound
 		}
-		return MessageEnvelopeV1{}, fmt.Errorf("load recipient device: %w", err)
+		return EnqueuedMessage{}, fmt.Errorf("load recipient device: %w", err)
 	}
 	if recipientRevoked.Valid {
-		return MessageEnvelopeV1{}, ErrRecipientRevoked
+		return EnqueuedMessage{}, ErrRecipientRevoked
 	}
 	if accountEpoch < 1 || accountEpoch > int64(^uint32(0)) || uint32(accountEpoch) != envelope.AccountEpoch {
-		return MessageEnvelopeV1{}, ErrRecipientEpochMismatch
+		return EnqueuedMessage{}, ErrRecipientEpochMismatch
 	}
 
-	_, err = tx.ExecContext(ctx, `
+	var createdAt time.Time
+	err = tx.QueryRowContext(ctx, `
 INSERT INTO message_envelopes (
 	envelope_id,
 	recipient_device,
@@ -160,21 +168,22 @@ INSERT INTO message_envelopes (
 	expires_at
 )
 VALUES ($1::uuid, $2::uuid, $3, $4)
+RETURNING created_at
 `,
 		uuidText(envelope.EnvelopeID),
 		uuidText(envelope.RecipientDeviceID),
 		envelope.Raw,
 		expiresAt,
-	)
+	).Scan(&createdAt)
 	if err != nil {
-		return MessageEnvelopeV1{}, fmt.Errorf("persist message envelope: %w", err)
+		return EnqueuedMessage{}, fmt.Errorf("persist message envelope: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return MessageEnvelopeV1{}, fmt.Errorf("commit message envelope: %w", err)
+		return EnqueuedMessage{}, fmt.Errorf("commit message envelope: %w", err)
 	}
 
-	return envelope, nil
+	return EnqueuedMessage{Envelope: envelope, CreatedAt: createdAt.UTC()}, nil
 }
 
 // Fetch returns unacknowledged, unexpired opaque envelopes for a recipient.
