@@ -30,7 +30,7 @@ const (
 )
 
 type MessageDelivery interface {
-	Enqueue(context.Context, []byte, time.Time) (messages.MessageEnvelopeV1, error)
+	Enqueue(context.Context, []byte, time.Time) (messages.EnqueuedMessage, error)
 	Fetch(context.Context, [16]byte, int) ([]messages.StoredEnvelope, error)
 	Ack(context.Context, [16]byte, [16]byte) error
 }
@@ -40,7 +40,7 @@ type MessageDelivery interface {
 // message operation. The legacy methods remain for the explicitly demo-only
 // shared-bearer path.
 type AuthenticatedMessageDelivery interface {
-	EnqueueAuthenticated(context.Context, []byte, time.Time, messages.AuthenticatedDevice) (messages.MessageEnvelopeV1, error)
+	EnqueueAuthenticated(context.Context, []byte, time.Time, messages.AuthenticatedDevice) (messages.EnqueuedMessage, error)
 	FetchAuthenticated(context.Context, messages.AuthenticatedDevice, int) ([]messages.StoredEnvelope, error)
 	AckAuthenticated(context.Context, messages.AuthenticatedDevice, [16]byte) error
 }
@@ -192,18 +192,18 @@ func serveDemoMessageSend(w http.ResponseWriter, r *http.Request, delivery Messa
 		return
 	}
 
-	var envelope messages.MessageEnvelopeV1
+	var enqueued messages.EnqueuedMessage
 	if deviceAuthenticated {
 		authenticatedDelivery, ok := delivery.(AuthenticatedMessageDelivery)
 		if !ok {
 			writeMessageError(w, http.StatusServiceUnavailable, "ERR_AUTHENTICATED_DELIVERY_UNAVAILABLE")
 			return
 		}
-		envelope, err = authenticatedDelivery.EnqueueAuthenticated(
+		enqueued, err = authenticatedDelivery.EnqueueAuthenticated(
 			r.Context(), body, expiresAt, authenticatedMessageDevice(principal),
 		)
 	} else {
-		envelope, err = delivery.Enqueue(r.Context(), body, expiresAt)
+		enqueued, err = delivery.Enqueue(r.Context(), body, expiresAt)
 	}
 	if err != nil {
 		switch {
@@ -232,8 +232,9 @@ func serveDemoMessageSend(w http.ResponseWriter, r *http.Request, delivery Messa
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"envelope_id":         envelopeIDString(envelope.EnvelopeID),
-		"recipient_device_id": envelopeIDString(envelope.RecipientDeviceID),
+		"envelope_id":         envelopeIDString(enqueued.Envelope.EnvelopeID),
+		"recipient_device_id": envelopeIDString(enqueued.Envelope.RecipientDeviceID),
+		"created_at":          enqueued.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"expires_at":          expiresAt.Format(time.RFC3339Nano),
 	})
 }
