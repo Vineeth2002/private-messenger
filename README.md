@@ -2,7 +2,7 @@
 
 A global private messenger engineered in India: persistent application data hosted in India, end-to-end encryption (E2EE) with client-owned cryptographic state, and the server acting as a delivery/control plane.
 
-**Status snapshot: 2026-11-15 (Asia/Kolkata). Controlled Android 1:1 messaging alpha; not production-ready and not independently audited.** The latest reviewed main baseline is [09dfe4f](https://github.com/Vineeth2002/private-messenger/commit/09dfe4faa61fa810a2994f1560a0b9894fdb115a).
+**Status snapshot: 2026-11-19 (Asia/Kolkata). Controlled Android 1:1 messaging alpha; not production-ready and not independently audited.** The latest reviewed main baseline is [1137b9b](https://github.com/Vineeth2002/private-messenger/commit/1137b9b6e6c195ca46df65800cf008bce29ad47c).
 
 ## Current product state
 
@@ -16,18 +16,24 @@ The earlier README statement that Android only presents a diagnostics/identity s
 
 This is meaningful alpha functionality, but it is not a fully validated end-to-end product. The current client uses the `/v1/demo/messages` surface, manual fingerprint trust instead of witness-backed production trust, and foreground polling rather than production background delivery. The repository does not yet contain an Android acceptance test that proves the complete two-client Android-to-Gateway-to-PostgreSQL-to-Android path, including reply and restart/restore.
 
-## Roadmap status
+## Canonical P0â€“P9 roadmap
 
-The canonical roadmap uses fixed stages P0-P9. The current tracked baseline supports only these status statements:
+The canonical project roadmap is now recorded in [ROADMAP_P0_P9_CANONICAL_2026-11-19.md](docs/ROADMAP_P0_P9_CANONICAL_2026-11-19.md). P0â€“P2 retain the existing baseline; P3â€“P9 formalize the remaining product scope into explicit implementation and release gates.
 
-| Stage | Focus | Current status |
+| Stage | Focus | Status |
 |---|---|---|
-| P0 | Scope and evidence baseline | In progress; no product-completion weight |
-| P1 | Gateway platform foundation | In progress; 12% weight |
-| P2 | Identity, enrollment, authorization and recovery | In progress; 12% weight |
-| P3-P9 | Remaining canonical stages | Names, weights and exit criteria are not yet present in the tracked baseline register. Do not infer them or calculate an overall completion percentage. |
+| P0 | Scope and evidence baseline | In progress |
+| P1 | Gateway platform foundation | In progress; 12% existing weight |
+| P2 | Identity, enrollment, authorization and recovery | In progress; 12% existing weight |
+| P3 | End-to-end cryptographic protocol and durable cryptographic state | In progress; freeze and assurance remain open |
+| P4 | Android 1:1 messaging client | Controlled alpha exists; acceptance incomplete |
+| P5 | Reliable delivery, offline operation, background sync and notifications | Foreground polling only; production behavior incomplete |
+| P6 | Encrypted media and content lifecycle | Crypto foundation exists; end-to-end flow incomplete |
+| P7 | Voice/video calling and cross-platform client readiness | Not started as a complete product capability |
+| P8 | Groups and multi-device conversations | Not started as a complete product capability |
+| P9 | Production assurance, operations and release | Blocked |
 
-The detailed evidence-based review is [the P0-P2 baseline audit](docs/ROADMAP_P0_P2_CURRENT_BASELINE_2026-11-15.md). The older Phase A/Phase B gate records remain historical project evidence; they are not a replacement for the canonical P0-P9 roadmap.
+Do not calculate an overall completion percentage until the remaining phase weights are approved. Language Lens and on-device AI remain future/post-V1 work, not blockers for the narrow Android 1:1 alpha.
 
 ## What is not complete
 

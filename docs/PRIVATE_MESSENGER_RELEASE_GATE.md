@@ -2,9 +2,9 @@
 
 **Current decision: BLOCKED for production use.**
 
-This is a release-control document, not a claim that incomplete gates have passed. The latest reviewed main baseline is [09dfe4faa61fa810a2994f1560a0b9894fdb115a](https://github.com/Vineeth2002/private-messenger/commit/09dfe4faa61fa810a2994f1560a0b9894fdb115a), inspected on 2026-11-15 (Asia/Kolkata). The P0-P2 source audit was reviewed against main commit [0a332a5b08ca0eb74c83b730e20751bdee38a64b](https://github.com/Vineeth2002/private-messenger/commit/0a332a5b08ca0eb74c83b730e20751bdee38a64b) and merged in [PR #18](https://github.com/Vineeth2002/private-messenger/pull/18).
+This is a release-control document, not a claim that incomplete gates have passed. The latest reviewed main baseline is [1137b9b6e6c195ca46df65800cf008bce29ad47c](https://github.com/Vineeth2002/private-messenger/commit/1137b9b6e6c195ca46df65800cf008bce29ad47c), inspected on 2026-11-19 (Asia/Kolkata). The canonical P0â€“P9 register is [ROADMAP_P0_P9_CANONICAL_2026-11-19.md](ROADMAP_P0_P9_CANONICAL_2026-11-19.md). The P0-P2 source audit was reviewed against main commit [0a332a5b08ca0eb74c83b730e20751bdee38a64b](https://github.com/Vineeth2002/private-messenger/commit/0a332a5b08ca0eb74c83b730e20751bdee38a64b) and merged in [PR #18](https://github.com/Vineeth2002/private-messenger/pull/18).
 
-## Current implementation snapshot - 2026-11-15
+## Current implementation snapshot - 2026-11-19
 
 The repository now contains a **controlled Android 1:1 messaging alpha**. MainActivity mounts AlphaMessagingPanel. The alpha includes manual out-of-band peer fingerprint pinning, signed-prekey/X3DH setup, Double Ratchet message processing, encrypted local message/ratchet records, SQLite-backed sessions/messages/outbox/inbox receipts, and send/fetch/ACK through the demo message API. Synchronization is foreground polling while the panel is active.
 
@@ -33,18 +33,30 @@ The evidence-based implementation detail is recorded in [the P0-P2 baseline audi
 
 **CI boundary:** a passing workflow verifies only the checks configured in that workflow. It does not verify complete mobile product behavior, physical-device acceptance, deployment configuration, or cryptographic security through independent review.
 
-## Roadmap status - do not infer missing stages
+## Canonical roadmap status â€” P0â€“P9
 
-The canonical roadmap baseline uses fixed stages P0-P9. Current evidence supports:
+The authoritative project register is [ROADMAP_P0_P9_CANONICAL_2026-11-19.md](ROADMAP_P0_P9_CANONICAL_2026-11-19.md). P0â€“P2 retain the previously recorded baseline; P3â€“P9 are now explicitly decomposed from the frozen product specification and current implementation evidence.
 
 | Stage | Focus | Status |
 |---|---|---|
-| P0 | Scope and evidence baseline | In progress; no product-completion weight |
-| P1 | Gateway platform foundation | In progress; 12% weight |
-| P2 | Identity, enrollment, authorization and recovery | In progress; 12% weight |
-| P3-P9 | Remaining stages | Authoritative names, weights and exit criteria are not present in the current tracked register. Do not invent them or calculate total completion. |
+| P0 | Scope and evidence baseline | In progress |
+| P1 | Gateway platform foundation | In progress; 12% existing weight |
+| P2 | Identity, enrollment, authorization and recovery | In progress; 12% existing weight |
+| P3 | End-to-end cryptographic protocol and durable cryptographic state | In progress; freeze and assurance remain open |
+| P4 | Android 1:1 messaging client | Controlled alpha exists; acceptance incomplete |
+| P5 | Reliable delivery, offline operation, background sync and notifications | Foreground polling only; production behavior incomplete |
+| P6 | Encrypted media and content lifecycle | Crypto foundation exists; end-to-end flow incomplete |
+| P7 | Voice/video calling and cross-platform client readiness | Not started as a complete product capability |
+| P8 | Groups and multi-device conversations | Not started as a complete product capability |
+| P9 | Production assurance, operations and release | Blocked |
 
-The complete P0-P9 register must be reconciled from an authoritative owner-approved source before an overall roadmap percentage or P3-P9 status can be published.
+No overall roadmap completion percentage is published until the remaining phase weights are explicitly approved.
+
+## First submission target â€” Android 1:1 controlled alpha
+
+The fastest honest first target is Android-only 1:1 text messaging through a controlled testing track. It is not production approval. Before upload, complete the API 36 build-toolchain migration, reproducible signed AAB, physical two-device acceptance, actual Android HTTPS/API verification, delivery/outbox reliability checks, privacy policy and applicable Play declarations. Keep calls, media, groups, iOS and AI outside this first submission scope unless their own acceptance gates pass.
+
+For current Google Play target API, developer-account testing and app-content requirements, see the official links in the canonical roadmap document. Production remains blocked until the applicable P9 evidence is complete.
 
 ## Release-blocking gates
 
