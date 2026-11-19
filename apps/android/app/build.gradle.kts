@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "org.sovereign.pm"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "org.sovereign.pm"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "0.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
