@@ -146,11 +146,24 @@ internal fun AlphaMessengerWorkspace(
         )
     }
 
+    var discoveredMatches by remember { mutableStateOf<Map<String, DiscoveredPeerMatch>>(emptyMap()) }
+    var isDiscoveringContacts by remember { mutableStateOf(false) }
+
     fun syncPhoneAndEmailContacts() {
+        isDiscoveringContacts = true
         worker.execute {
             val loaded = loadDevicePhoneAndEmailContacts(appContext)
+            val currentPhone = simPrefs.getString("registered_phone", "").orEmpty()
+            val matches = discoverMatchingContacts(
+                context = appContext,
+                gatewayOrigin = gatewayOrigin,
+                contacts = loaded,
+                selfPhoneNumber = currentPhone,
+            )
             handler.post {
                 phonebookContacts = loaded
+                discoveredMatches = matches
+                isDiscoveringContacts = false
             }
         }
     }
@@ -406,20 +419,6 @@ internal fun AlphaMessengerWorkspace(
         }
     }
 
-    DisposableEffect(route, selectedPeerKey, gatewayOrigin, identity, isActivityForeground) {
-        val shouldPoll = route == MessengerRoute.CONVERSATION && selectedPeerKey != null &&
-            identity != null && gatewayConfigured && isActivityForeground
-        val task = if (shouldPoll) {
-            worker.scheduleWithFixedDelay(
-                { synchronizeForeground() },
-                0L,
-                3L,
-                TimeUnit.SECONDS,
-            )
-        } else null
-        onDispose { task?.cancel(true) }
-    }
-
     DisposableEffect(worker, database) {
         onDispose {
             worker.shutdownNow()
@@ -623,6 +622,22 @@ internal fun AlphaMessengerWorkspace(
 
     var activeTab by remember { mutableStateOf(BottomNavTab.CHATS) }
     var currentScreen by remember { mutableStateOf(AppScreen.HOME) }
+
+    DisposableEffect(currentScreen, selectedPeerKey, gatewayOrigin, identity, isActivityForeground) {
+        val shouldPoll = (currentScreen == AppScreen.HOME || currentScreen == AppScreen.CONVERSATION) &&
+            identity != null && gatewayConfigured && isActivityForeground
+        val delaySeconds = if (currentScreen == AppScreen.CONVERSATION) 3L else 8L
+        val task = if (shouldPoll) {
+            worker.scheduleWithFixedDelay(
+                { synchronizeForeground() },
+                0L,
+                delaySeconds,
+                TimeUnit.SECONDS,
+            )
+        } else null
+        onDispose { task?.cancel(true) }
+    }
+
     var overflowMenuOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(route) {
@@ -1103,6 +1118,9 @@ internal fun AlphaMessengerWorkspace(
         }
         currentScreen == AppScreen.NEW_CHAT -> NewChatFullScreen(
             phonebookContacts = phonebookContacts,
+            discoveredMatches = discoveredMatches,
+            isDiscovering = isDiscoveringContacts,
+            gatewayConfigured = gatewayConfigured,
             contactsPermissionGranted = contactsPermissionGranted,
             onSyncContacts = {
                 if (contactsPermissionGranted) syncPhoneAndEmailContacts()
@@ -1666,6 +1684,13 @@ internal fun AlphaMessengerWorkspace(
                 if (myPairingCode.isBlank() && identity != null && gatewayConfigured) {
                     createOwnPairingCode()
                 }
+                publishLocalDirectoryEntry(
+                    context = appContext,
+                    phoneNumber = activeSim.boundPhoneNumber,
+                    displayName = profileName,
+                    pairingCode = myPairingCode,
+                )
+                syncPhoneAndEmailContacts()
                 currentScreen = AppScreen.NEW_CHAT
             },
             statusStories = statusStories,

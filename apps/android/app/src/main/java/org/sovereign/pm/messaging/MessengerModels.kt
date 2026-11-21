@@ -856,3 +856,118 @@ internal fun OutboxState.toUiStatus(): OutboxMessageStatus = when (this) {
 internal fun AlphaPairingRecord.stableKey(): String = "${accountId.workspaceHex()}:${deviceId.workspaceHex()}"
 internal fun AlphaPairingRecord.aliasPreferenceKey(): String = "peer_${stableKey().replace(':', '_')}"
 internal fun ByteArray.workspaceHex(): String = joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+
+
+internal data class DiscoveredPeerMatch(
+    val discoveryHashHex: String,
+    val displayName: String,
+    val pairingCode: String?,
+    val isLocalEmulatorAccount: Boolean = false,
+)
+
+internal fun publishLocalDirectoryEntry(
+    context: Context,
+    phoneNumber: String,
+    displayName: String,
+    pairingCode: String,
+) {
+    val normalized = normalizeIndianPhone(phoneNumber)
+    if (normalized.isBlank()) return
+    val hash = sha256DiscoveryHash(normalized)
+    val prefs = context.getSharedPreferences("pm-local-directory-v1", Context.MODE_PRIVATE)
+    val existingRaw = prefs.getString("entries_json", null)
+    val arr = runCatching { if (existingRaw != null) JSONArray(existingRaw) else JSONArray() }.getOrDefault(JSONArray())
+    val nextArr = JSONArray()
+    for (i in 0 until arr.length()) {
+        val obj = arr.optJSONObject(i) ?: continue
+        if (obj.optString("hash") != hash) {
+            nextArr.put(obj)
+        }
+    }
+    nextArr.put(
+        org.json.JSONObject().apply {
+            put("hash", hash)
+            put("name", displayName.ifBlank { phoneNumber })
+            put("pairingCode", pairingCode)
+            put("updatedAt", System.currentTimeMillis())
+        },
+    )
+    prefs.edit().putString("entries_json", nextArr.toString()).apply()
+}
+
+internal fun discoverMatchingContacts(
+    context: Context,
+    gatewayOrigin: String,
+    contacts: List<PhonebookContact>,
+    selfPhoneNumber: String,
+): Map<String, DiscoveredPeerMatch> {
+    val matches = LinkedHashMap<String, DiscoveredPeerMatch>()
+    val selfHash = sha256DiscoveryHash(normalizeIndianPhone(selfPhoneNumber))
+
+    // 1. Check local multi-account directory (instant offline/same-device discovery)
+    val prefs = context.getSharedPreferences("pm-local-directory-v1", Context.MODE_PRIVATE)
+    val localRaw = prefs.getString("entries_json", null)
+    if (!localRaw.isNullOrBlank()) {
+        runCatching {
+            val arr = JSONArray(localRaw)
+            val contactHashes = contacts.map { it.discoveryHashHex }.toSet()
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val h = obj.optString("hash")
+                if (h.isNotBlank() && h != selfHash && (contactHashes.isEmpty() || contactHashes.contains(h))) {
+                    matches[h] = DiscoveredPeerMatch(
+                        discoveryHashHex = h,
+                        displayName = obj.optString("name", "Registered User"),
+                        pairingCode = obj.optString("pairingCode").takeIf { it.isNotBlank() },
+                        isLocalEmulatorAccount = true,
+                    )
+                }
+            }
+        }
+    }
+
+    // 2. Query HTTPS gateway `/v1/contacts/discover` when configured
+    if (gatewayOrigin.startsWith("https://", ignoreCase = true) && contacts.isNotEmpty()) {
+        runCatching {
+            val endpoint = "${gatewayOrigin.trimEnd('/')}/v1/contacts/discover"
+            val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 4500
+                readTimeout = 4500
+                requestMethod = "POST"
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            }
+            try {
+                val hashesArr = JSONArray()
+                contacts.take(150).forEach { hashesArr.put(it.discoveryHashHex) }
+                val payload = org.json.JSONObject().apply {
+                    put("selfHash", selfHash)
+                    put("hashes", hashesArr)
+                }.toString()
+                conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+                if (conn.responseCode in 200..299) {
+                    val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                    val root = org.json.JSONObject(body)
+                    val arr = root.optJSONArray("matches") ?: JSONArray()
+                    for (i in 0 until arr.length()) {
+                        val m = arr.optJSONObject(i) ?: continue
+                        val h = m.optString("hash")
+                        if (h.isNotBlank() && h != selfHash) {
+                            matches[h] = DiscoveredPeerMatch(
+                                discoveryHashHex = h,
+                                displayName = m.optString("displayName", "Registered Contact"),
+                                pairingCode = m.optString("pairingCode").takeIf { it.isNotBlank() },
+                                isLocalEmulatorAccount = false,
+                            )
+                        }
+                    }
+                }
+            } finally {
+                conn.disconnect()
+            }
+        }
+    }
+
+    return matches
+}
