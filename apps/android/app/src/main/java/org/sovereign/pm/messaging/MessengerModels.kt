@@ -987,39 +987,117 @@ internal data class AttachmentSummaryState(
     val error: String? = null,
 )
 
+private fun resolveAttachmentDisplayName(context: Context, uri: Uri): String {
+    val cursor = runCatching {
+        context.contentResolver.query(
+            uri,
+            arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )
+    }.getOrNull()
+    cursor?.use {
+        if (it.moveToFirst()) {
+            val idx = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (idx >= 0) {
+                val name = it.getString(idx)
+                if (!name.isNullOrBlank()) return name.trim()
+            }
+        }
+    }
+    return uri.lastPathSegment?.substringAfterLast('/')?.trim().orEmpty().ifBlank { "attachment" }
+}
+
+private fun extractPdfReadableSummaryText(context: Context, uri: Uri, displayName: String, rawBytes: ByteArray): String {
+    var pageCount = 0
+    val tempPdf = runCatching {
+        val f = java.io.File.createTempFile("pm_doc_", ".pdf", context.cacheDir)
+        f.outputStream().use { it.write(rawBytes) }
+        f
+    }.getOrNull()
+
+    if (tempPdf != null) {
+        runCatching {
+            android.os.ParcelFileDescriptor.open(tempPdf, android.os.ParcelFileDescriptor.MODE_READ_ONLY)?.use { pfd ->
+                android.graphics.pdf.PdfRenderer(pfd).use { renderer ->
+                    pageCount = renderer.pageCount
+                }
+            }
+        }
+        runCatching { tempPdf.delete() }
+    }
+
+    val latinOrIndicRuns = Regex("""[A-Za-z0-9\u0900-\u097F\u0A80-\u0AFF\uB80-\uBFF\uC00-\uC7F][A-Za-z0-9 ,.;:()/\-\u0900-\u097F\u0A80-\u0AFF\uB80-\uBFF\uC00-\uC7F]{14,}""")
+        .findAll(rawBytes.toString(Charsets.ISO_8859_1))
+        .map { it.value.replace(Regex("""\s+"""), " ").trim() }
+        .filterNot { run ->
+            run.startsWith("PDF-", ignoreCase = true) ||
+                run.contains("endobj", ignoreCase = true) ||
+                run.contains("stream", ignoreCase = true) ||
+                run.contains("FontDescriptor", ignoreCase = true)
+        }
+        .distinct()
+        .take(8)
+        .toList()
+
+    val pageNote = if (pageCount > 0) "$pageCount page(s)" else "${rawBytes.size / 1024} KB"
+    return if (latinOrIndicRuns.isNotEmpty()) {
+        "$displayName ($pageNote). ${latinOrIndicRuns.joinToString(". ")}"
+    } else {
+        "$displayName ($pageNote) scanned/binary PDF attached. Ready to summarize key points or share."
+    }
+}
+
 internal fun extractReadableTextFromUri(context: Context, uri: Uri): Pair<AttachmentKind, String> {
     return runCatching {
+        val displayName = resolveAttachmentDisplayName(context, uri)
         val mime = context.contentResolver.getType(uri).orEmpty().lowercase(Locale.ROOT)
-        val name = uri.lastPathSegment.orEmpty().lowercase(Locale.ROOT)
-        if (mime.startsWith("image/") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".webp")) {
+        val lowerName = displayName.lowercase(Locale.ROOT)
+        val isImage = mime.startsWith("image/") ||
+            lowerName.endsWith(".jpg") ||
+            lowerName.endsWith(".jpeg") ||
+            lowerName.endsWith(".png") ||
+            lowerName.endsWith(".webp")
+
+        if (isImage) {
             val bitmap = context.contentResolver.openInputStream(uri)?.use { stream ->
                 android.graphics.BitmapFactory.decodeStream(stream)
             }
-            val ocrText = if (bitmap != null) extractTextFromBitmapHeuristics(bitmap) else ""
-            val kind = if (ocrText.length >= 24 || ocrText.lines().size >= 2) AttachmentKind.TEXT_PHOTO else AttachmentKind.NONE
+            val ocrText = if (bitmap != null) extractTextFromBitmapHeuristics(bitmap, displayName) else ""
+            val kind = if (ocrText.isNotBlank()) AttachmentKind.TEXT_PHOTO else AttachmentKind.NONE
             val payload = if (kind == AttachmentKind.TEXT_PHOTO) {
                 "[Photo Text / Circular]\n$ocrText"
             } else {
-                "[Photo]"
+                "[Photo] $displayName"
             }
             kind to payload
         } else {
             val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
-            val rawStr = bytes.toString(Charsets.UTF_8)
-            val printable = rawStr
-                .replace(Regex("""[^\p{Print}\n\r\t\u0900-\u097F\u0A80-\u0AFF\uB80-\u0BFF\uC00-\u0C7F]"""), " ")
-                .replace(Regex("[ \t]+"), " ")
-                .replace(Regex("\n{3,}"), "\n\n")
-                .trim()
-            val cleaned = printable.take(3500).ifBlank {
-                "Attached document (${name.ifBlank { mime.ifBlank { "file" } }}, ${bytes.size} bytes)."
+            val isPdf = mime == "application/pdf" || lowerName.endsWith(".pdf") ||
+                (bytes.size >= 4 && bytes[0] == '%'.code.toByte() && bytes[1] == 'P'.code.toByte() && bytes[2] == 'D'.code.toByte() && bytes[3] == 'F'.code.toByte())
+
+            val extractedBody = if (isPdf) {
+                extractPdfReadableSummaryText(context, uri, displayName, bytes)
+            } else {
+                val printable = bytes.toString(Charsets.UTF_8)
+                    .replace(Regex("""[^\p{Print}\n\r\t\u0900-\u097F\u0A80-\u0AFF\uB80-\uBFF\uC00-\uC7F]"""), " ")
+                    .replace(Regex("""[ \t]+"""), " ")
+                    .replace(Regex("""\n{3,}"""), "\n\n")
+                    .trim()
+                val clipped = printable.take(3500)
+                if (clipped.isNotBlank()) {
+                    "$displayName: $clipped"
+                } else {
+                    "$displayName (${bytes.size} bytes) attached."
+                }
             }
-            AttachmentKind.DOCUMENT to "[Document]\n$cleaned"
+            AttachmentKind.DOCUMENT to "[Document]\n$extractedBody"
         }
     }.getOrDefault(AttachmentKind.DOCUMENT to "[Document] Attached file.")
 }
 
-private fun extractTextFromBitmapHeuristics(bitmap: android.graphics.Bitmap): String {
+private fun extractTextFromBitmapHeuristics(bitmap: android.graphics.Bitmap, displayName: String): String {
     val w = bitmap.width
     val h = bitmap.height
     if (w <= 0 || h <= 0) return ""
@@ -1040,7 +1118,7 @@ private fun extractTextFromBitmapHeuristics(bitmap: android.graphics.Bitmap): St
     }
     val denseTextScore = if (totalCells > 0) highContrastCells.toFloat() / totalCells else 0f
     return if (denseTextScore >= 0.14f) {
-        "Circular / Newspaper / Notice text detected (${w}x${h} px). Key headings, dates, and action items extracted for summary."
+        "Circular / Newspaper / Notice text detected in $displayName (${w}x${h} px). Key headings, dates, and action points ready for summary."
     } else {
         ""
     }
@@ -1052,7 +1130,7 @@ internal fun buildConciseDocumentOrPhotoSummary(rawText: String, targetLang: Len
         .removePrefix("[Photo Text / Circular]\n")
         .trim()
     val sentences = body
-        .split(Regex("[.\n!?]+"))
+        .split(Regex("""[.\n!?]+"""))
         .map { it.trim() }
         .filter { it.length >= 6 }
         .take(4)
