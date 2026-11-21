@@ -216,6 +216,34 @@ internal fun AlphaMessengerWorkspace(
     // Per-peer preferred reading language + in-memory translation cache (never alters stored ciphertext)
     var peerLanguages by remember { mutableStateOf<Map<String, LensLanguage>>(emptyMap()) }
     val lensCache = remember { mutableStateMapOf<String, LensRenderState>() }
+    val summaryCache = remember { mutableStateMapOf<String, AttachmentSummaryState>() }
+
+    fun summarizeAttachmentOnDemand(msg: MessengerMessage, targetLang: LensLanguage) {
+        val key = "${msg.localMessageId}:${targetLang.code}"
+        val existing = summaryCache[key]
+        if (existing != null && (existing.loading || existing.summaryText != null)) return
+        summaryCache[key] = AttachmentSummaryState(loading = true)
+        worker.execute {
+            val result = runCatching { buildConciseDocumentOrPhotoSummary(msg.body, targetLang) }
+            handler.post {
+                result.fold(
+                    onSuccess = { summary ->
+                        summaryCache[key] = AttachmentSummaryState(
+                            loading = false,
+                            summaryText = summary,
+                            detectedSourceText = msg.body,
+                        )
+                    },
+                    onFailure = { err ->
+                        summaryCache[key] = AttachmentSummaryState(
+                            loading = false,
+                            error = err.message ?: "Unable to summarize",
+                        )
+                    },
+                )
+            }
+        }
+    }
 
     // On-device Android TextToSpeech engine for listening to original or translated messages
     var ttsReady by remember { mutableStateOf(false) }
@@ -939,6 +967,8 @@ internal fun AlphaMessengerWorkspace(
                     }
                 },
                 getLensState = { msgId, lang -> lensCache["$msgId:${lang.code}"] },
+                getSummaryState = { msgId, lang -> summaryCache["$msgId:${lang.code}"] },
+                onSummarizeMessage = { msg, lang -> summarizeAttachmentOnDemand(msg, lang) },
                 speakingMessageId = speakingMessageId,
                 onSpeakMessage = { msgId, textToSpeak, lang -> speakText(msgId, textToSpeak, lang) },
                 starredIds = starredMessageIds,
@@ -995,6 +1025,8 @@ internal fun AlphaMessengerWorkspace(
                         }
                     },
                     getLensState = { msgId, lang -> lensCache["$msgId:${lang.code}"] },
+                getSummaryState = { msgId, lang -> summaryCache["$msgId:${lang.code}"] },
+                onSummarizeMessage = { msg, lang -> summarizeAttachmentOnDemand(msg, lang) },
                     speakingMessageId = speakingMessageId,
                     onSpeakMessage = { msgId, textToSpeak, lang -> speakText(msgId, textToSpeak, lang) },
                     starredIds = starredMessageIds,
@@ -1056,6 +1088,8 @@ internal fun AlphaMessengerWorkspace(
                     }
                 },
                 getLensState = { msgId, lang -> lensCache["$msgId:${lang.code}"] },
+                getSummaryState = { msgId, lang -> summaryCache["$msgId:${lang.code}"] },
+                onSummarizeMessage = { msg, lang -> summarizeAttachmentOnDemand(msg, lang) },
                 speakingMessageId = speakingMessageId,
                 onSpeakMessage = { msgId, textToSpeak, lang -> speakText(msgId, textToSpeak, lang) },
                 starredIds = starredMessageIds,

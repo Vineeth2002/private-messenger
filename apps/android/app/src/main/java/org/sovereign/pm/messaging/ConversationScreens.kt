@@ -114,6 +114,8 @@ internal fun RichConversationScreen(
     activeLanguage: LensLanguage,
     onSelectLanguage: (LensLanguage) -> Unit,
     getLensState: (String, LensLanguage) -> LensRenderState?,
+    getSummaryState: (String, LensLanguage) -> AttachmentSummaryState? = { _, _ -> null },
+    onSummarizeMessage: (MessengerMessage, LensLanguage) -> Unit = { _, _ -> },
     speakingMessageId: String?,
     onSpeakMessage: (String, String, LensLanguage) -> Unit,
     starredIds: Set<String>,
@@ -127,6 +129,25 @@ internal fun RichConversationScreen(
     onSend: () -> Unit,
 ) {
     val listState = rememberLazyListState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    val docPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val (_, extracted) = extractReadableTextFromUri(context, uri)
+            onDraftChange(extracted)
+        }
+    }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val (_, extracted) = extractReadableTextFromUri(context, uri)
+            onDraftChange(extracted)
+        }
+    }
 
     LaunchedEffect(thread.messages.size) {
         if (thread.messages.isNotEmpty()) {
@@ -247,6 +268,30 @@ internal fun RichConversationScreen(
                     verticalAlignment = Alignment.Bottom,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = SovereignSlatePalette.SearchPill,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .clickable { docPickerLauncher.launch(arrayOf("application/pdf", "text/plain", "*/*")) },
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("📄", fontSize = 15.sp)
+                        }
+                    }
+                    Surface(
+                        shape = CircleShape,
+                        color = SovereignSlatePalette.SearchPill,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .clickable { photoPickerLauncher.launch("image/*") },
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("🖼", fontSize = 15.sp)
+                        }
+                    }
                     Surface(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(24.dp),
@@ -412,6 +457,39 @@ internal fun RichConversationScreen(
                                     fontSize = 11.sp,
                                     color = if (outgoing) Color.White.copy(alpha = 0.78f) else SovereignSlatePalette.TextSecondary,
                                 )
+                            }
+
+                            val isSummarizable = msg.body.startsWith("[Document]") || msg.body.startsWith("[Photo Text / Circular]")
+                            if (isSummarizable) {
+                                val sumState = getSummaryState(msg.localMessageId, activeLanguage)
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (outgoing) Color.White.copy(alpha = 0.18f) else SovereignSlatePalette.VerifiedTealSoft,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .clickable { onSummarizeMessage(msg, activeLanguage) },
+                                ) {
+                                    Text(
+                                        if (sumState?.loading == true) "Summarizing..." else "✨ Summarize",
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (outgoing) Color.White else SovereignSlatePalette.VerifiedTeal,
+                                    )
+                                }
+                                if (!sumState?.summaryText.isNullOrBlank()) {
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (outgoing) Color.White.copy(alpha = 0.14f) else SovereignSlatePalette.PageCanvas,
+                                    ) {
+                                        Text(
+                                            sumState!!.summaryText!!,
+                                            modifier = Modifier.padding(10.dp),
+                                            fontSize = 13.sp,
+                                            color = if (outgoing) Color.White else SovereignSlatePalette.TextPrimary,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

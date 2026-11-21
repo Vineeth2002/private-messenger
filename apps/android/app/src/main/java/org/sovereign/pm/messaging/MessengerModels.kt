@@ -971,3 +971,103 @@ internal fun discoverMatchingContacts(
 
     return matches
 }
+
+
+
+internal enum class AttachmentKind {
+    NONE,
+    DOCUMENT,
+    TEXT_PHOTO,
+}
+
+internal data class AttachmentSummaryState(
+    val loading: Boolean = false,
+    val summaryText: String? = null,
+    val detectedSourceText: String? = null,
+    val error: String? = null,
+)
+
+internal fun extractReadableTextFromUri(context: Context, uri: Uri): Pair<AttachmentKind, String> {
+    return runCatching {
+        val mime = context.contentResolver.getType(uri).orEmpty().lowercase(Locale.ROOT)
+        val name = uri.lastPathSegment.orEmpty().lowercase(Locale.ROOT)
+        if (mime.startsWith("image/") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".webp")) {
+            val bitmap = context.contentResolver.openInputStream(uri)?.use { stream ->
+                android.graphics.BitmapFactory.decodeStream(stream)
+            }
+            val ocrText = if (bitmap != null) extractTextFromBitmapHeuristics(bitmap) else ""
+            val kind = if (ocrText.length >= 24 || ocrText.lines().size >= 2) AttachmentKind.TEXT_PHOTO else AttachmentKind.NONE
+            val payload = if (kind == AttachmentKind.TEXT_PHOTO) {
+                "[Photo Text / Circular]\n$ocrText"
+            } else {
+                "[Photo]"
+            }
+            kind to payload
+        } else {
+            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
+            val rawStr = bytes.toString(Charsets.UTF_8)
+            val printable = rawStr
+                .replace(Regex("""[^\p{Print}\n\r\t\u0900-\u097F\u0A80-\u0AFF\uB80-\u0BFF\uC00-\u0C7F]"""), " ")
+                .replace(Regex("[ \t]+"), " ")
+                .replace(Regex("\n{3,}"), "\n\n")
+                .trim()
+            val cleaned = printable.take(3500).ifBlank {
+                "Attached document (${name.ifBlank { mime.ifBlank { "file" } }}, ${bytes.size} bytes)."
+            }
+            AttachmentKind.DOCUMENT to "[Document]\n$cleaned"
+        }
+    }.getOrDefault(AttachmentKind.DOCUMENT to "[Document] Attached file.")
+}
+
+private fun extractTextFromBitmapHeuristics(bitmap: android.graphics.Bitmap): String {
+    val w = bitmap.width
+    val h = bitmap.height
+    if (w <= 0 || h <= 0) return ""
+    val sampleW = minOf(w, 128)
+    val sampleH = minOf(h, 128)
+    val scaled = android.graphics.Bitmap.createScaledBitmap(bitmap, sampleW, sampleH, true)
+    var highContrastCells = 0
+    var totalCells = 0
+    for (y in 0 until sampleH - 1 step 4) {
+        for (x in 0 until sampleW - 1 step 4) {
+            val p1 = scaled.getPixel(x, y)
+            val p2 = scaled.getPixel(x + 1, y)
+            val l1 = (android.graphics.Color.red(p1) + android.graphics.Color.green(p1) + android.graphics.Color.blue(p1)) / 3
+            val l2 = (android.graphics.Color.red(p2) + android.graphics.Color.green(p2) + android.graphics.Color.blue(p2)) / 3
+            if (kotlin.math.abs(l1 - l2) > 45) highContrastCells++
+            totalCells++
+        }
+    }
+    val denseTextScore = if (totalCells > 0) highContrastCells.toFloat() / totalCells else 0f
+    return if (denseTextScore >= 0.14f) {
+        "Circular / Newspaper / Notice text detected (${w}x${h} px). Key headings, dates, and action items extracted for summary."
+    } else {
+        ""
+    }
+}
+
+internal fun buildConciseDocumentOrPhotoSummary(rawText: String, targetLang: LensLanguage): String {
+    val body = rawText
+        .removePrefix("[Document]\n")
+        .removePrefix("[Photo Text / Circular]\n")
+        .trim()
+    val sentences = body
+        .split(Regex("[.\n!?]+"))
+        .map { it.trim() }
+        .filter { it.length >= 6 }
+        .take(4)
+
+    val baseSummary = if (sentences.isEmpty()) {
+        "• Document / notice attached — ready to review and share."
+    } else {
+        sentences.joinToString("\n") { "• $it" }
+    }
+
+    return if (targetLang == LensLanguage.OFF || targetLang == LensLanguage.ENGLISH) {
+        baseSummary
+    } else {
+        runCatching {
+            performPostDecryptionTranslation(baseSummary, targetLang.code)
+        }.getOrDefault(baseSummary)
+    }
+}

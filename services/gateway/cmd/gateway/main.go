@@ -331,6 +331,8 @@ to_regclass('public.authorization_events') IS NOT NULL`).Scan(&bootstrapSchemaRe
 		log.Printf("KT STH persistence enabled")
 	}
 
+	handler = gwhttp.WithContactDiscovery(handler)
+
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           handler,
