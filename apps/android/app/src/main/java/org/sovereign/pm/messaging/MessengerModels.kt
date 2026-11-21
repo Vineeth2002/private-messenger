@@ -818,7 +818,7 @@ internal fun performPostDecryptionTranslationWithEndpoint(
         val translated = runCatching {
             if (conn.responseCode in 200..299) {
                 val raw = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }.trim()
-                if (raw.startsWith("{"))
+                if (raw.startsWith("{")) {
                     val obj = org.json.JSONObject(raw)
                     obj.optString("translatedText", obj.optString("translation", "")).trim()
                 } else {
