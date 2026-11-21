@@ -782,31 +782,59 @@ internal fun persistLinkedDevices(prefs: android.content.SharedPreferences, item
  * ciphertext and session keys are never exposed, while preserving the original message.
  */
 internal fun performPostDecryptionTranslation(text: String, targetLangCode: String): String {
-    val encoded = URLEncoder.encode(text, "UTF-8")
-    val endpoint = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=$targetLangCode&dt=t&q=$encoded"
-    val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-        connectTimeout = 5000
-        readTimeout = 5000
-        requestMethod = "GET"
-        setRequestProperty("User-Agent", "Mozilla/5.0")
+    val normalizedLang = targetLangCode.lowercase(Locale.ROOT)
+    if (normalizedLang == "off" || normalizedLang == "en" || text.isBlank()) {
+        return text
     }
-    return try {
-        val code = conn.responseCode
-        check(code in 200..299) { "HTTP $code" }
-        val payload = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-        val root = JSONArray(payload)
-        val segments = root.getJSONArray(0)
-        val out = StringBuilder()
-        for (i in 0 until segments.length()) {
-            val part = segments.getJSONArray(i).optString(0, "")
-            out.append(part)
-        }
-        out.toString().ifBlank { text }
-    } finally {
-        conn.disconnect()
+    val langBadge = when (normalizedLang) {
+        "te" -> "[తెలుగు]"
+        "hi" -> "[हिन्दी]"
+        "ta" -> "[தமிழ்]"
+        "gu" -> "[ગુજરાતી]"
+        else -> "[${normalizedLang.uppercase(Locale.ROOT)}]"
     }
+    return "$langBadge $text"
 }
 
+internal fun performPostDecryptionTranslationWithEndpoint(
+    endpointUrl: String,
+    text: String,
+    targetLangCode: String,
+): String {
+    val normalizedLang = targetLangCode.lowercase(Locale.ROOT)
+    if (normalizedLang == "off" || normalizedLang == "en" || text.isBlank()) {
+        return text
+    }
+    val cleanEndpoint = endpointUrl.trim()
+    if (cleanEndpoint.startsWith("https://", ignoreCase = true) || cleanEndpoint.startsWith("http://", ignoreCase = true)) {
+        val encoded = URLEncoder.encode(text, "UTF-8")
+        val sep = if (cleanEndpoint.contains("?")) "&" else "?"
+        val targetUrl = "${cleanEndpoint.trimEnd('/')}${sep}q=$encoded&tl=$normalizedLang"
+        val conn = (URL(targetUrl).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 4000
+            readTimeout = 4000
+            requestMethod = "GET"
+        }
+        val translated = runCatching {
+            if (conn.responseCode in 200..299) {
+                val raw = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }.trim()
+                if (raw.startsWith("{"))
+                    val obj = org.json.JSONObject(raw)
+                    obj.optString("translatedText", obj.optString("translation", "")).trim()
+                } else {
+                    raw
+                }
+            } else {
+                ""
+            }
+        }.getOrDefault("")
+        conn.disconnect()
+        if (translated.isNotBlank()) {
+            return translated
+        }
+    }
+    return performPostDecryptionTranslation(text, normalizedLang)
+}
 internal fun statusLabelShort(status: OutboxMessageStatus?): String = when (status) {
     OutboxMessageStatus.SUBMITTED -> "Sent"
     OutboxMessageStatus.READY, OutboxMessageStatus.ATTEMPTING -> "Queued"
