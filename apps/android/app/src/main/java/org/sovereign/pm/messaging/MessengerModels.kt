@@ -1149,3 +1149,33 @@ internal fun buildConciseDocumentOrPhotoSummary(rawText: String, targetLang: Len
         }.getOrDefault(baseSummary)
     }
 }
+
+
+
+internal data class AdaptiveUserExperienceConfig(
+    val simpleEasyMode: Boolean = false,
+    val enableDocAndCircularSummary: Boolean = true,
+    val enableRegionalLanguageLens: Boolean = true,
+    val autoVoiceReadback: Boolean = false,
+)
+
+internal fun loadAdaptiveExperienceConfig(prefs: android.content.SharedPreferences): AdaptiveUserExperienceConfig {
+    return AdaptiveUserExperienceConfig(
+        simpleEasyMode = prefs.getBoolean("ux_simple_easy_mode", false),
+        enableDocAndCircularSummary = prefs.getBoolean("ux_enable_doc_summary", true),
+        enableRegionalLanguageLens = prefs.getBoolean("ux_enable_language_lens", true),
+        autoVoiceReadback = prefs.getBoolean("ux_auto_voice_readback", false),
+    )
+}
+
+internal fun persistAdaptiveExperienceConfig(
+    prefs: android.content.SharedPreferences,
+    config: AdaptiveUserExperienceConfig,
+) {
+    prefs.edit()
+        .putBoolean("ux_simple_easy_mode", config.simpleEasyMode)
+        .putBoolean("ux_enable_doc_summary", config.enableDocAndCircularSummary)
+        .putBoolean("ux_enable_language_lens", config.enableRegionalLanguageLens)
+        .putBoolean("ux_auto_voice_readback", config.autoVoiceReadback)
+        .apply()
+}

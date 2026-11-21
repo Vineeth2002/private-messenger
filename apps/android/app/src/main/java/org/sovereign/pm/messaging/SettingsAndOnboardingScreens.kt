@@ -188,6 +188,8 @@ internal fun SettingsToggleRow(
 
 @Composable
 internal fun SettingsHomeScreen(
+    experienceConfig: AdaptiveUserExperienceConfig = AdaptiveUserExperienceConfig(),
+    onUpdateExperienceConfig: (AdaptiveUserExperienceConfig) -> Unit = {},
     profileName: String,
     profileAbout: String,
     phoneNumber: String,
@@ -245,6 +247,44 @@ internal fun SettingsHomeScreen(
                         Text(phoneNumber, fontSize = 12.sp, color = SovereignSlatePalette.VerifiedTeal)
                     }
                     Text("›", fontSize = 22.sp, color = SovereignSlatePalette.TextSecondary)
+                }
+            }
+
+            // Adaptive Experience & Storage-Saver Packs Card
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = SovereignSlatePalette.CardWhite,
+                border = BorderStroke(1.dp, SovereignSlatePalette.Hairline),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column {
+                    Text(
+                        "EASY MODE & SMART PACKS",
+                        modifier = Modifier.padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 4.dp),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SovereignSlatePalette.PrimaryIndigo,
+                    )
+                    SettingsToggleRow(
+                        title = "Simple Easy View",
+                        subtitle = "Show only Chats & Calls with clean, uncluttered screens for everyday use",
+                        checked = experienceConfig.simpleEasyMode,
+                        onCheckedChange = { onUpdateExperienceConfig(experienceConfig.copy(simpleEasyMode = it)) },
+                    )
+                    HorizontalDivider(color = SovereignSlatePalette.Hairline)
+                    SettingsToggleRow(
+                        title = "Document & Newspaper Summary",
+                        subtitle = "Summarize PDFs, circulars & text photos on-device (~2 MB pack)",
+                        checked = experienceConfig.enableDocAndCircularSummary,
+                        onCheckedChange = { onUpdateExperienceConfig(experienceConfig.copy(enableDocAndCircularSummary = it)) },
+                    )
+                    HorizontalDivider(color = SovereignSlatePalette.Hairline)
+                    SettingsToggleRow(
+                        title = "Regional Language Lens",
+                        subtitle = "Instant Telugu, Hindi, Tamil & Gujarati reading & voice bar",
+                        checked = experienceConfig.enableRegionalLanguageLens,
+                        onCheckedChange = { onUpdateExperienceConfig(experienceConfig.copy(enableRegionalLanguageLens = it)) },
+                    )
                 }
             }
 

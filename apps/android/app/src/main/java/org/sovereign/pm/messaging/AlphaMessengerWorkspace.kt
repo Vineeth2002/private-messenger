@@ -647,9 +647,18 @@ internal fun AlphaMessengerWorkspace(
     val suitePrefs = remember(appContext, userPhoneKey) {
         appContext.getSharedPreferences("pm-suite-state-$userPhoneKey", Context.MODE_PRIVATE)
     }
-
     var activeTab by remember { mutableStateOf(BottomNavTab.CHATS) }
     var currentScreen by remember { mutableStateOf(AppScreen.HOME) }
+    var experienceConfig by remember(userPhoneKey) {
+        mutableStateOf(loadAdaptiveExperienceConfig(suitePrefs))
+    }
+    fun updateExperienceConfig(next: AdaptiveUserExperienceConfig) {
+        experienceConfig = next
+        persistAdaptiveExperienceConfig(suitePrefs, next)
+        if (next.simpleEasyMode && (activeTab == BottomNavTab.UPDATES || activeTab == BottomNavTab.COMMUNITIES)) {
+            activeTab = BottomNavTab.CHATS
+        }
+    }
 
     DisposableEffect(currentScreen, selectedPeerKey, gatewayOrigin, identity, isActivityForeground) {
         val shouldPoll = (currentScreen == AppScreen.HOME || currentScreen == AppScreen.CONVERSATION) &&
@@ -967,6 +976,7 @@ internal fun AlphaMessengerWorkspace(
                     }
                 },
                 getLensState = { msgId, lang -> lensCache["$msgId:${lang.code}"] },
+                experienceConfig = experienceConfig,
                 getSummaryState = { msgId, lang -> summaryCache["$msgId:${lang.code}"] },
                 onSummarizeMessage = { msg, lang -> summarizeAttachmentOnDemand(msg, lang) },
                 speakingMessageId = speakingMessageId,
@@ -1025,6 +1035,7 @@ internal fun AlphaMessengerWorkspace(
                         }
                     },
                     getLensState = { msgId, lang -> lensCache["$msgId:${lang.code}"] },
+                experienceConfig = experienceConfig,
                 getSummaryState = { msgId, lang -> summaryCache["$msgId:${lang.code}"] },
                 onSummarizeMessage = { msg, lang -> summarizeAttachmentOnDemand(msg, lang) },
                     speakingMessageId = speakingMessageId,
@@ -1088,6 +1099,7 @@ internal fun AlphaMessengerWorkspace(
                     }
                 },
                 getLensState = { msgId, lang -> lensCache["$msgId:${lang.code}"] },
+                experienceConfig = experienceConfig,
                 getSummaryState = { msgId, lang -> summaryCache["$msgId:${lang.code}"] },
                 onSummarizeMessage = { msg, lang -> summarizeAttachmentOnDemand(msg, lang) },
                 speakingMessageId = speakingMessageId,
@@ -1379,6 +1391,8 @@ internal fun AlphaMessengerWorkspace(
             onEndCall = { currentScreen = AppScreen.HOME },
         )
         currentScreen == AppScreen.SETTINGS_HOME -> SettingsHomeScreen(
+            experienceConfig = experienceConfig,
+            onUpdateExperienceConfig = { updateExperienceConfig(it) },
             profileName = profileName,
             profileAbout = profileAbout,
             phoneNumber = activeSim.boundPhoneNumber,
@@ -1656,6 +1670,7 @@ internal fun AlphaMessengerWorkspace(
             onBack = { currentScreen = AppScreen.SETTINGS_HELP },
         )
         else -> MainFourTabHomeScreen(
+            simpleEasyMode = experienceConfig.simpleEasyMode,
             activeTab = activeTab,
             onSelectTab = { activeTab = it; overflowMenuOpen = false },
             overflowMenuOpen = overflowMenuOpen,

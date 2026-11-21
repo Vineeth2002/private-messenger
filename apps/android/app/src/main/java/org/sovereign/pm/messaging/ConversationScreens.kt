@@ -111,6 +111,7 @@ import java.util.concurrent.TimeUnit
 @Composable
 internal fun RichConversationScreen(
     thread: RichThread,
+    experienceConfig: AdaptiveUserExperienceConfig = AdaptiveUserExperienceConfig(),
     activeLanguage: LensLanguage,
     onSelectLanguage: (LensLanguage) -> Unit,
     getLensState: (String, LensLanguage) -> LensRenderState?,
@@ -220,7 +221,7 @@ internal fun RichConversationScreen(
                     }
 
                     // Regional Language Lens bar
-                    Row(
+                    if (experienceConfig.enableRegionalLanguageLens) Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp, vertical = 6.dp)
@@ -268,16 +269,18 @@ internal fun RichConversationScreen(
                     verticalAlignment = Alignment.Bottom,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = SovereignSlatePalette.SearchPill,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .clickable { docPickerLauncher.launch(arrayOf("application/pdf", "text/plain", "*/*")) },
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text("📄", fontSize = 15.sp)
+                    if (experienceConfig.enableDocAndCircularSummary) {
+                        Surface(
+                            shape = CircleShape,
+                            color = SovereignSlatePalette.SearchPill,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .clickable { docPickerLauncher.launch(arrayOf("application/pdf", "text/plain", "*/*")) },
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("📄", fontSize = 15.sp)
+                            }
                         }
                     }
                     Surface(
@@ -459,7 +462,8 @@ internal fun RichConversationScreen(
                                 )
                             }
 
-                            val isSummarizable = msg.body.startsWith("[Document]") || msg.body.startsWith("[Photo Text / Circular]")
+                            val isSummarizable = experienceConfig.enableDocAndCircularSummary &&
+                                (msg.body.startsWith("[Document]") || msg.body.startsWith("[Photo Text / Circular]"))
                             if (isSummarizable) {
                                 val sumState = getSummaryState(msg.localMessageId, activeLanguage)
                                 Surface(
