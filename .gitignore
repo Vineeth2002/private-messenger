@@ -17,3 +17,4 @@ parity-out/
 *.key
 *.mnemonic
 build-report.txt
+services/gateway/bin/
