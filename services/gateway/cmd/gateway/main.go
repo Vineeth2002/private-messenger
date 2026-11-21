@@ -100,6 +100,7 @@ func main() {
 		sthStore := kt.NewPostgresSTHStore(db)
 		sthPublisher := kt.NewSTHPublisher(sthStore, logPublicKey(logPrivate))
 		deviceDirectory := devices.NewPostgresDirectory(db)
+			handler = gwhttp.WithContactDiscoveryStore(handler, gwhttp.NewPostgresContactDiscoveryStore(db))
 
 		// Keep the demo relay disabled unless explicitly enabled.
 		handler = gwhttp.NewHandlerWithSTHAndDevices(sthPublisher, deviceDirectory)
@@ -331,7 +332,7 @@ to_regclass('public.authorization_events') IS NOT NULL`).Scan(&bootstrapSchemaRe
 		log.Printf("KT STH persistence enabled")
 	}
 
-	handler = gwhttp.WithContactDiscoveryStore(handler, gwhttp.NewPostgresContactDiscoveryStore(db))
+		handler = gwhttp.WithContactDiscovery(handler)
 
 	srv := &http.Server{
 		Addr:              addr,
