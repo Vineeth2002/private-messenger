@@ -775,33 +775,7 @@ internal fun persistLinkedDevices(prefs: android.content.SharedPreferences, item
     prefs.edit().putString("linked_devices_json", arr.toString()).apply()
 }
 
-@Composable
-internal fun PrivacyMirrorNotice(onOpenSettings: () -> Unit) {
-    Scaffold(containerColor = SovereignSlatePalette.PageCanvas) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(24.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            DisclosureCard(
-                title = "Chats hidden while screen sharing",
-                body = "Turn off screen mirroring in Settings to view your messages.",
-                isCaution = true,
-            )
-            Spacer(Modifier.height(12.dp))
-            Button(
-                onClick = onOpenSettings,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = SovereignSlatePalette.PrimaryIndigo),
-            ) {
-                Text("Open Settings", color = Color.White)
-            }
-        }
-    }
-}
+
 
 /**
  * Post-decryption translation helper. Runs strictly after local decryption so stored
