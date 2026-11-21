@@ -282,87 +282,28 @@ internal fun NewChatFullScreen(
                         }
                     }
                 }
-            } else {
-                val matchedContacts = filtered.filter { discoveredMatches.containsKey(it.discoveryHashHex) }
-                val unmatchedContacts = filtered.filterNot { discoveredMatches.containsKey(it.discoveryHashHex) }
-
-                Row(
+            } else if (filtered.isNotEmpty()) {
+                Text(
+                    "CONTACTS ON DEVICE",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = SovereignSlatePalette.TextSecondary,
+                )
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = SovereignSlatePalette.CardWhite,
+                    border = BorderStroke(1.dp, SovereignSlatePalette.Hairline),
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        if (isDiscovering) "Checking registered contacts..."
-                        else if (gatewayConfigured) "Gateway discovery active"
-                        else "Offline discovery mode",
-                        fontSize = 12.sp,
-                        color = if (gatewayConfigured) SovereignSlatePalette.VerifiedTeal else SovereignSlatePalette.TextSecondary,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    TextButton(onClick = onSyncContacts) {
-                        Text("Refresh", fontSize = 12.sp, color = SovereignSlatePalette.PrimaryIndigo)
-                    }
-                }
-
-                if (matchedContacts.isNotEmpty()) {
-                    Text(
-                        "REGISTERED CONTACTS (E2EE READY)",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = SovereignSlatePalette.VerifiedTeal,
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = SovereignSlatePalette.CardWhite,
-                        border = BorderStroke(1.dp, SovereignSlatePalette.Hairline),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column {
-                            matchedContacts.forEachIndexed { idx, c ->
-                                val match = discoveredMatches[c.discoveryHashHex]
-                                SettingsActionRow(
-                                    title = c.displayName,
-                                    subtitle = if (!match?.pairingCode.isNullOrBlank()) "${c.phoneOrEmail} · Encrypted" else c.phoneOrEmail,
-                                    onClick = {
-                                        val code = match?.pairingCode
-                                        if (!code.isNullOrBlank()) {
-                                            onConnectInviteCode(c.displayName, code)
-                                        } else {
-                                            onStartDirectChat(c.displayName, c.phoneOrEmail)
-                                        }
-                                    },
-                                )
-                                if (idx < matchedContacts.lastIndex) {
-                                    HorizontalDivider(color = SovereignSlatePalette.Hairline)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (unmatchedContacts.isNotEmpty()) {
-                    Text(
-                        "CONTACTS ON DEVICE",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = SovereignSlatePalette.TextSecondary,
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = SovereignSlatePalette.CardWhite,
-                        border = BorderStroke(1.dp, SovereignSlatePalette.Hairline),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column {
-                            unmatchedContacts.forEachIndexed { idx, c ->
-                                SettingsActionRow(
-                                    title = c.displayName,
-                                    subtitle = c.phoneOrEmail,
-                                    onClick = { onStartDirectChat(c.displayName, c.phoneOrEmail) },
-                                )
-                                if (idx < unmatchedContacts.lastIndex) {
-                                    HorizontalDivider(color = SovereignSlatePalette.Hairline)
-                                }
+                    Column {
+                        filtered.forEachIndexed { idx, c ->
+                            SettingsActionRow(
+                                title = c.displayName,
+                                subtitle = c.phoneOrEmail,
+                                onClick = { onStartDirectChat(c.displayName, c.phoneOrEmail) },
+                            )
+                            if (idx < filtered.lastIndex) {
+                                HorizontalDivider(color = SovereignSlatePalette.Hairline)
                             }
                         }
                     }

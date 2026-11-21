@@ -534,6 +534,8 @@ internal fun ChatInfoScreen(
     onToggleMute: () -> Unit,
     onToggleFavorite: () -> Unit,
     onCycleDisappearing: () -> Unit,
+    onAddMember: (String) -> Unit = {},
+    onRemoveMember: (String) -> Unit = {},
     onClearChat: () -> Unit,
     onDeleteChat: () -> Unit,
 ) {
@@ -611,7 +613,8 @@ internal fun ChatInfoScreen(
                 }
             }
 
-            if (thread.members.isNotEmpty()) {
+            if (thread.kind == ThreadKind.GROUP || thread.kind == ThreadKind.BROADCAST || thread.members.isNotEmpty()) {
+                var newMemberInput by remember { mutableStateOf("") }
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = SovereignSlatePalette.CardWhite,
@@ -620,7 +623,7 @@ internal fun ChatInfoScreen(
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Text(
                             "${thread.members.size} participants",
@@ -628,8 +631,49 @@ internal fun ChatInfoScreen(
                             fontWeight = FontWeight.Bold,
                             color = SovereignSlatePalette.TextSecondary,
                         )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedTextField(
+                                value = newMemberInput,
+                                onValueChange = { newMemberInput = it },
+                                modifier = Modifier.weight(1f),
+                                label = { Text("Add member name or number") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                            )
+                            Button(
+                                onClick = {
+                                    val clean = newMemberInput.trim()
+                                    if (clean.isNotEmpty()) {
+                                        onAddMember(clean)
+                                        newMemberInput = ""
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = SovereignSlatePalette.PrimaryIndigo),
+                            ) {
+                                Text("Add", color = Color.White)
+                            }
+                        }
                         thread.members.forEach { member ->
-                            Text(member, fontSize = 15.sp, color = SovereignSlatePalette.TextPrimary)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    member,
+                                    fontSize = 15.sp,
+                                    color = SovereignSlatePalette.TextPrimary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(onClick = { onRemoveMember(member) }) {
+                                    Text("Remove", fontSize = 12.sp, color = SovereignSlatePalette.NoticeText)
+                                }
+                            }
                         }
                     }
                 }

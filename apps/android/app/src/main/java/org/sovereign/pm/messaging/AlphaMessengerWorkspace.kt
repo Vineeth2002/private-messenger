@@ -1146,6 +1146,32 @@ internal fun AlphaMessengerWorkspace(
                         richThreads = next
                         persistRichThreads(suitePrefs, next)
                     },
+                    onAddMember = { memberName ->
+                        val next = richThreads.map { item ->
+                            if (item.id == thread.id && !item.members.contains(memberName)) {
+                                val updatedMembers = item.members + memberName
+                                item.copy(
+                                    members = updatedMembers,
+                                    subtitle = if (item.kind == ThreadKind.GROUP) "${updatedMembers.size} participants" else item.subtitle,
+                                )
+                            } else item
+                        }
+                        richThreads = next
+                        persistRichThreads(suitePrefs, next)
+                    },
+                    onRemoveMember = { memberName ->
+                        val next = richThreads.map { item ->
+                            if (item.id == thread.id) {
+                                val updatedMembers = item.members.filterNot { it == memberName }
+                                item.copy(
+                                    members = updatedMembers,
+                                    subtitle = if (item.kind == ThreadKind.GROUP) "${updatedMembers.size} participants" else item.subtitle,
+                                )
+                            } else item
+                        }
+                        richThreads = next
+                        persistRichThreads(suitePrefs, next)
+                    },
                     onClearChat = {
                         val next = richThreads.map { if (it.id == thread.id) it.copy(messages = emptyList()) else it }
                         richThreads = next
