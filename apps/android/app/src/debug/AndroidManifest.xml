@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="org.sovereign.pm.debug.Phase3AReviewActivity"
+            android:exported="true"
+            android:label="Sovereign PM — Phase 3A Review" />
+    </application>
+</manifest>
