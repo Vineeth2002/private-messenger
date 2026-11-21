@@ -265,7 +265,7 @@ internal fun AlphaMessengerWorkspace(
     }
 
     val selectedPeer = peers.firstOrNull { it.stableKey == selectedPeerKey }
-    val gatewayConfigured = gatewayOrigin.startsWith("https://", ignoreCase = true)
+    val gatewayConfigured = isLocalOrHttpsGatewayOrigin(gatewayOrigin)
 
     fun getPeerLanguage(peerKey: String): LensLanguage {
         peerLanguages[peerKey]?.let { return it }

@@ -956,7 +956,7 @@ internal fun discoverMatchingContacts(
     }
 
     // 2. Query HTTPS gateway `/v1/contacts/discover` when configured
-    if (gatewayOrigin.startsWith("https://", ignoreCase = true) && contacts.isNotEmpty()) {
+    if (isLocalOrHttpsGatewayOrigin(gatewayOrigin) && contacts.isNotEmpty()) {
         runCatching {
             val endpoint = "${gatewayOrigin.trimEnd('/')}/v1/contacts/discover"
             val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
@@ -1229,4 +1229,14 @@ internal fun persistAdaptiveExperienceConfig(
         .putBoolean("ux_enable_language_lens", config.enableRegionalLanguageLens)
         .putBoolean("ux_auto_voice_readback", config.autoVoiceReadback)
         .apply()
+}
+
+
+internal fun isLocalOrHttpsGatewayOrigin(origin: String): Boolean {
+    val trimmed = origin.trim()
+    if (trimmed.startsWith("https://", ignoreCase = true)) return true
+    val lower = trimmed.lowercase(Locale.ROOT)
+    return lower.startsWith("http://10.0.2.2") ||
+        lower.startsWith("http://127.0.0.1") ||
+        lower.startsWith("http://localhost")
 }
