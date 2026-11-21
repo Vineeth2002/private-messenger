@@ -1009,7 +1009,7 @@ private fun resolveAttachmentDisplayName(context: Context, uri: Uri): String {
     return uri.lastPathSegment?.substringAfterLast('/')?.trim().orEmpty().ifBlank { "attachment" }
 }
 
-private fun extractPdfReadableSummaryText(context: Context, uri: Uri, displayName: String, rawBytes: ByteArray): String {
+private fun extractPdfReadableSummaryText(context: Context, displayName: String, rawBytes: ByteArray): String {
     var pageCount = 0
     val tempPdf = runCatching {
         val f = java.io.File.createTempFile("pm_doc_", ".pdf", context.cacheDir)
@@ -1078,7 +1078,7 @@ internal fun extractReadableTextFromUri(context: Context, uri: Uri): Pair<Attach
                 (bytes.size >= 4 && bytes[0] == '%'.code.toByte() && bytes[1] == 'P'.code.toByte() && bytes[2] == 'D'.code.toByte() && bytes[3] == 'F'.code.toByte())
 
             val extractedBody = if (isPdf) {
-                extractPdfReadableSummaryText(context, uri, displayName, bytes)
+                extractPdfReadableSummaryText(context, displayName, bytes)
             } else {
                 val printable = bytes.toString(Charsets.UTF_8)
                     .replace(Regex("""[^\p{Print}\n\r\t\u0900-\u097F\u0A80-\u0AFF\uB80-\uBFF\uC00-\uC7F]"""), " ")
@@ -1129,16 +1129,39 @@ internal fun buildConciseDocumentOrPhotoSummary(rawText: String, targetLang: Len
         .removePrefix("[Document]\n")
         .removePrefix("[Photo Text / Circular]\n")
         .trim()
-    val sentences = body
-        .split(Regex("""[.\n!?]+"""))
-        .map { it.trim() }
-        .filter { it.length >= 6 }
-        .take(4)
 
-    val baseSummary = if (sentences.isEmpty()) {
+    val candidates = body
+        .split(Regex("""[.\n!?]+"""))
+        .map { it.replace(Regex("""\s+"""), " ").trim() }
+        .filter { it.length >= 8 }
+        .distinct()
+
+    // Pure on-device extractive ranking (zero cloud or Google Play Services dependency):
+    // Prioritize sentences containing dates, numbers, deadlines, notices, and key action terms.
+    val keyTerms = listOf(
+        "date", "deadline", "last", "notice", "circular", "order", "amount", "rs", "inr",
+        "exam", "holiday", "schedule", "time", "apply", "submit", "important", "approved",
+        "total", "due", "fee", "ward", "dept", "office", "government", "public",
+    )
+
+    val ranked = candidates.mapIndexed { index, sentence ->
+        var score = 0
+        if (index == 0) score += 3 // Title / opening line boost
+        if (Regex("""\d+""").containsMatchIn(sentence)) score += 3 // Numbers, dates, amounts
+        val lower = sentence.lowercase(Locale.ROOT)
+        score += keyTerms.count { lower.contains(it) } * 2
+        if (sentence.length in 24..140) score += 2
+        Triple(index, score, sentence)
+    }
+        .sortedWith(compareByDescending<Triple<Int, Int, String>> { it.second }.thenBy { it.first })
+        .take(4)
+        .sortedBy { it.first }
+        .map { it.third }
+
+    val baseSummary = if (ranked.isEmpty()) {
         "• Document / notice attached — ready to review and share."
     } else {
-        sentences.joinToString("\n") { "• $it" }
+        ranked.joinToString("\n") { "• $it" }
     }
 
     return if (targetLang == LensLanguage.OFF || targetLang == LensLanguage.ENGLISH) {

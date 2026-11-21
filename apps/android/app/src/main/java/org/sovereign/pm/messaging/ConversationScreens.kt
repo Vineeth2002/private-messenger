@@ -482,16 +482,40 @@ internal fun RichConversationScreen(
                                     )
                                 }
                                 if (!sumState?.summaryText.isNullOrBlank()) {
+                                    val summarySpeakId = "${msg.localMessageId}_summary"
+                                    val isSpeakingSummary = speakingMessageId == summarySpeakId
                                     Surface(
                                         shape = RoundedCornerShape(12.dp),
                                         color = if (outgoing) Color.White.copy(alpha = 0.14f) else SovereignSlatePalette.PageCanvas,
                                     ) {
-                                        Text(
-                                            sumState!!.summaryText!!,
+                                        Column(
                                             modifier = Modifier.padding(10.dp),
-                                            fontSize = 13.sp,
-                                            color = if (outgoing) Color.White else SovereignSlatePalette.TextPrimary,
-                                        )
+                                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                                        ) {
+                                            Text(
+                                                sumState!!.summaryText!!,
+                                                fontSize = 13.sp,
+                                                color = if (outgoing) Color.White else SovereignSlatePalette.TextPrimary,
+                                            )
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = if (outgoing) Color.White.copy(alpha = 0.18f) else SovereignSlatePalette.PrimaryIndigoSoft,
+                                                modifier = Modifier
+                                                    .clip(CircleShape)
+                                                    .clickable {
+                                                        val speakLang = if (activeLanguage == LensLanguage.OFF) LensLanguage.ENGLISH else activeLanguage
+                                                        onSpeakMessage(summarySpeakId, sumState.summaryText!!, speakLang)
+                                                    },
+                                            ) {
+                                                Text(
+                                                    if (isSpeakingSummary) "⏹ Stop Summary" else "🔊 Listen to Summary",
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = if (outgoing) Color.White else SovereignSlatePalette.PrimaryIndigo,
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
