@@ -172,6 +172,14 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Cache Maven local repository for Robolectric artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-robolectric-${{ hashFiles('apps/android/app/build.gradle.kts', 'apps/android/gradle/libs.versions.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-robolectric-
+
       - name: Create ephemeral CI-only debug gateway CA resource
         shell: bash
         run: |
@@ -187,6 +195,7 @@ jobs:
           rm -f "$RUNNER_TEMP/dev_gateway_ca.key"
           test -s "$CA_DIR/dev_gateway_ca.pem"
           openssl x509 -in "$CA_DIR/dev_gateway_ca.pem" -noout -subject
+
       - name: Build, lint, and run Android unit tests
         id: build
         working-directory: apps/android
@@ -245,10 +254,8 @@ jobs:
           disable-animations: true
           disable-linux-hw-accel: auto
           emulator-boot-timeout: 900
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none
           working-directory: apps/android
-          # The action executes each non-empty script line separately using /bin/sh.
-          # Run the complete multi-line Bash script from a separate file instead.
           script: bash ../../.github/scripts/android-emulator-smoke.sh
 
       - name: Upload debug APK and emulator UI evidence
