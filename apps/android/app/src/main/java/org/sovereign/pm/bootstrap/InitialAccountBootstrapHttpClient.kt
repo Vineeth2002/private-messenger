@@ -76,13 +76,19 @@ class InitialAccountBootstrapHttpClient(
     }
 
     private fun validateOrigin(value: String): String {
-        val uri = URI(value.trim())
-        require(uri.scheme.equals("https", true) && !uri.host.isNullOrBlank() && uri.rawUserInfo == null &&
-            uri.rawQuery == null && uri.rawFragment == null && (uri.rawPath.isNullOrEmpty() || uri.rawPath == "/")) {
-            "A valid HTTPS gateway origin is required."
-        }
-        return "https://${uri.rawAuthority}"
+    val uri = URI(value.trim())
+    val hostLower = uri.host?.lowercase()
+    val allowedScheme = uri.scheme.equals("https", true) || (
+        uri.scheme.equals("http", true) &&
+            (hostLower == "10.0.2.2" || hostLower == "127.0.0.1" || hostLower == "localhost")
+    )
+    require(allowedScheme && !uri.host.isNullOrBlank() && uri.rawUserInfo == null &&
+        uri.rawQuery == null && uri.rawFragment == null && (uri.rawPath.isNullOrEmpty() || uri.rawPath == "/")) {
+        "A valid gateway origin is required."
     }
+    val schemeLower = uri.scheme.lowercase()
+    return "$schemeLower://${uri.rawAuthority}"
+}
     private fun readBounded(input: InputStream, max: Int): ByteArray {
         val out = ByteArrayOutputStream(); val buffer = ByteArray(1024)
         while (true) { val n=input.read(buffer); if(n<0) break; if(out.size()+n>max) throw IOException("Gateway response too large."); out.write(buffer,0,n) }
@@ -99,4 +105,14 @@ class InitialAccountBootstrapHttpClient(
         }
     }
     private data class Response(val status: Int, val contentType: String?, val body: ByteArray)
+}
+
+private fun isAllowedGatewayUri(uri: java.net.URI): Boolean {
+if (!uri.isAbsolute || uri.host.isNullOrBlank()) return false
+if (uri.scheme.equals("https", ignoreCase = true)) return true
+if (uri.scheme.equals("http", ignoreCase = true)) {
+    val h = uri.host.lowercase()
+    return h == "10.0.2.2" || h == "127.0.0.1" || h == "localhost"
+}
+return false
 }
