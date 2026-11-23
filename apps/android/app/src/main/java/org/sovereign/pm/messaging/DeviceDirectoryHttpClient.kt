@@ -151,8 +151,8 @@ internal class DeviceDirectoryHttpClient(
             } catch (error: Exception) {
                 throw IllegalArgumentException("Gateway URL is invalid", error)
             }
-            require(uri.isAbsolute && uri.scheme.equals("https", ignoreCase = true)) {
-                "Device directory requires an HTTPS gateway URL"
+            require(isAllowedGatewayUri(uri)) {
+                "Device directory requires HTTPS (or local http://10.0.2.2 / 127.0.0.1 / localhost)"
             }
             require(uri.host != null && uri.rawUserInfo == null &&
                 uri.rawQuery == null && uri.rawFragment == null) {
@@ -167,4 +167,13 @@ internal class DeviceDirectoryHttpClient(
             return uri.toASCIIString().trimEnd('/')
         }
     }
+}
+private fun isAllowedGatewayUri(uri: URI): Boolean {
+    if (!uri.isAbsolute || uri.host.isNullOrBlank()) return false
+    if (uri.scheme.equals("https", ignoreCase = true)) return true
+    if (uri.scheme.equals("http", ignoreCase = true)) {
+        val h = uri.host.lowercase()
+        return h == "10.0.2.2" || h == "127.0.0.1" || h == "localhost"
+    }
+    return false
 }

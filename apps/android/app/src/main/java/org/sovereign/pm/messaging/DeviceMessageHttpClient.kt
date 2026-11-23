@@ -76,8 +76,8 @@ class DeviceMessageHttpClient(
         require(connectTimeoutMs > 0 && readTimeoutMs > 0) { "HTTP timeouts must be positive" }
 
         val uri = URI(baseUrl.trim())
-        require(uri.scheme.equals("https", ignoreCase = true)) {
-            "Device message API requires HTTPS"
+        require(isAllowedGatewayUri(uri)) {
+            "Device message API requires HTTPS (or local http://10.0.2.2 / 127.0.0.1 / localhost)"
         }
         require(!uri.host.isNullOrBlank()) { "Invalid API host" }
         require(uri.rawUserInfo == null) { "API URL must not contain user information" }
@@ -376,4 +376,13 @@ class DeviceMessageHttpClient(
             append(hex.substring(20, 32))
         }
     }
+}
+private fun isAllowedGatewayUri(uri: URI): Boolean {
+    if (!uri.isAbsolute || uri.host.isNullOrBlank()) return false
+    if (uri.scheme.equals("https", ignoreCase = true)) return true
+    if (uri.scheme.equals("http", ignoreCase = true)) {
+        val h = uri.host.lowercase()
+        return h == "10.0.2.2" || h == "127.0.0.1" || h == "localhost"
+    }
+    return false
 }
