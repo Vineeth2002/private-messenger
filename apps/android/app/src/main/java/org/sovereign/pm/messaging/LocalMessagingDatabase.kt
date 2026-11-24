@@ -471,6 +471,51 @@ internal class LocalMessagingDatabase(
         return output
     }
 
+
+    @Synchronized
+    fun listDeliveryUnknownOutbox(maxAttempts: Int = 5, limit: Int = 20): List<ReadyOutboxMessage> {
+        val db = readableDatabase
+        val items = mutableListOf<ReadyOutboxMessage>()
+        db.rawQuery(
+            """
+            SELECT o.local_message_id, m.envelope_wire
+            FROM outbox o
+            INNER JOIN messages m ON m.local_message_id = o.local_message_id
+            WHERE o.state = 'DELIVERY_UNKNOWN' AND o.attempt_count < ?
+            ORDER BY o.updated_at_ms ASC
+            LIMIT ?
+            """.trimIndent(),
+            arrayOf(maxAttempts.toString(), limit.toString()),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                items.add(
+                    ReadyOutboxMessage(
+                        localMessageId = cursor.getString(0),
+                        envelopeWire = cursor.getBlob(1),
+                    ),
+                )
+            }
+        }
+        return items
+    }
+
+    @Synchronized
+    fun beginRetryOutboxAttempt(localMessageId: String, attemptedAtMillis: Long): Boolean {
+        val db = writableDatabase
+        db.execSQL(
+            """
+            UPDATE outbox
+            SET state = 'ATTEMPTING',
+                attempt_count = attempt_count + 1,
+                attempt_started_at_ms = ?,
+                updated_at_ms = ?
+            WHERE local_message_id = ? AND state IN ('READY', 'DELIVERY_UNKNOWN')
+            """.trimIndent(),
+            arrayOf(attemptedAtMillis, attemptedAtMillis, localMessageId),
+        )
+        return getOutboxStatus(localMessageId)?.state == OutboxState.ATTEMPTING
+    }
+
     @Synchronized
     fun getOutboxStatus(localMessageId: String): StoredOutboxStatus? {
         validateLocalMessageId(localMessageId)

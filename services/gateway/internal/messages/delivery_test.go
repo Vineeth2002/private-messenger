@@ -55,3 +55,12 @@ func TestUUIDText(t *testing.T) {
 func testExpiry() time.Time {
 	return time.Unix(0, 0).UTC()
 }
+
+func TestErrEnvelopeConflictIsDistinctError(t *testing.T) {
+	if ErrEnvelopeConflict == nil {
+		t.Fatal("expected ErrEnvelopeConflict to be defined")
+	}
+	if errors.Is(ErrEnvelopeConflict, ErrEnvelopeNotFound) {
+		t.Fatal("ErrEnvelopeConflict must not match ErrEnvelopeNotFound")
+	}
+}

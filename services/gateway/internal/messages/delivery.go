@@ -1,6 +1,7 @@
 package messages
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/hex"
@@ -62,8 +63,10 @@ type StoredEnvelope struct {
 // EnqueuedMessage pairs the validated protocol envelope with its database
 // creation timestamp. CreatedAt is server metadata and is not part of Raw.
 type EnqueuedMessage struct {
-	Envelope  MessageEnvelopeV1
-	CreatedAt time.Time
+	Envelope     MessageEnvelopeV1
+	CreatedAt    time.Time
+	ExpiresAt    time.Time
+	Deduplicated bool
 }
 
 func NewDeliveryService(db sqlDB) *DeliveryService {
@@ -160,6 +163,8 @@ FOR SHARE
 	}
 
 	var createdAt time.Time
+	var persistedExpiresAt time.Time
+	deduplicated := false
 	err = tx.QueryRowContext(ctx, `
 INSERT INTO message_envelopes (
 	envelope_id,
@@ -168,14 +173,29 @@ INSERT INTO message_envelopes (
 	expires_at
 )
 VALUES ($1::uuid, $2::uuid, $3, $4)
-RETURNING created_at
+ON CONFLICT (envelope_id) DO NOTHING
+RETURNING created_at, expires_at
 `,
 		uuidText(envelope.EnvelopeID),
 		uuidText(envelope.RecipientDeviceID),
 		envelope.Raw,
 		expiresAt,
-	).Scan(&createdAt)
-	if err != nil {
+	).Scan(&createdAt, &persistedExpiresAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		var existingRecipient string
+		var existingRaw []byte
+		if lookupErr := tx.QueryRowContext(ctx, `
+SELECT recipient_device::text, envelope_cbor, created_at, expires_at
+FROM message_envelopes
+WHERE envelope_id = $1::uuid
+`, uuidText(envelope.EnvelopeID)).Scan(&existingRecipient, &existingRaw, &createdAt, &persistedExpiresAt); lookupErr != nil {
+			return EnqueuedMessage{}, fmt.Errorf("load existing message envelope: %w", lookupErr)
+		}
+		if existingRecipient != uuidText(envelope.RecipientDeviceID) || !bytes.Equal(existingRaw, envelope.Raw) {
+			return EnqueuedMessage{}, ErrEnvelopeConflict
+		}
+		deduplicated = true
+	} else if err != nil {
 		return EnqueuedMessage{}, fmt.Errorf("persist message envelope: %w", err)
 	}
 
@@ -183,7 +203,12 @@ RETURNING created_at
 		return EnqueuedMessage{}, fmt.Errorf("commit message envelope: %w", err)
 	}
 
-	return EnqueuedMessage{Envelope: envelope, CreatedAt: createdAt.UTC()}, nil
+	return EnqueuedMessage{
+		Envelope:     envelope,
+		CreatedAt:    createdAt.UTC(),
+		ExpiresAt:    persistedExpiresAt.UTC(),
+		Deduplicated: deduplicated,
+	}, nil
 }
 
 // Fetch returns unacknowledged, unexpired opaque envelopes for a recipient.

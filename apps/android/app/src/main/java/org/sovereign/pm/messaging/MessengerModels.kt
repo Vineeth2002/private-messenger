@@ -70,7 +70,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
+import org.sovereign.pm.ui.theme.SovereignThemeTokens
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
@@ -261,22 +265,38 @@ internal data class MessengerPeer(
 }
 
 internal object SovereignSlatePalette {
-    val PageCanvas = Color(0xFFF7F8FC)
-    val CardWhite = Color(0xFFFFFFFF)
-    val TopBarSurface = Color(0xFFFFFFFF)
-    val PrimaryIndigo = Color(0xFF283593)
-    val PrimaryIndigoSoft = Color(0xFFE8EAF6)
-    val OutgoingBubble = Color(0xFF283593)
-    val IncomingBubble = Color(0xFFFFFFFF)
-    val ChatStreamCanvas = Color(0xFFF1F3F9)
-    val SearchPill = Color(0xFFECEFF7)
-    val NoticeBg = Color(0xFFFEF3C7)
-    val NoticeText = Color(0xFF78350F)
-    val TextPrimary = Color(0xFF141824)
-    val TextSecondary = Color(0xFF5B6478)
-    val Hairline = Color(0xFFE1E5F0)
-    val VerifiedTeal = Color(0xFF0F766E)
-    val VerifiedTealSoft = Color(0xFFCCFBF1)
+    val PageCanvas: Color
+        @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.background
+    val CardWhite: Color
+        @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.surface
+    val TopBarSurface: Color
+        @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.surface
+    val PrimaryIndigo: Color
+        @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.primary
+    val PrimaryIndigoSoft: Color
+        @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.primaryContainer
+    val OutgoingBubble: Color
+        @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.primary
+    val IncomingBubble: Color
+        @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.surfaceContainerLow
+    val ChatStreamCanvas: Color
+        @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.surfaceContainerLowest
+    val SearchPill: Color
+        @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.surfaceContainerHigh
+    val NoticeBg: Color
+        @Composable @ReadOnlyComposable get() = SovereignThemeTokens.semanticColors.unknownOutcomeContainer
+    val NoticeText: Color
+        @Composable @ReadOnlyComposable get() = SovereignThemeTokens.semanticColors.unknownOutcome
+    val TextPrimary: Color
+        @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.onSurface
+    val TextSecondary: Color
+        @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.onSurfaceVariant
+    val Hairline: Color
+        @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.outlineVariant
+    val VerifiedTeal: Color
+        @Composable @ReadOnlyComposable get() = SovereignThemeTokens.semanticColors.connectedDot
+    val VerifiedTealSoft: Color
+        @Composable @ReadOnlyComposable get() = SovereignThemeTokens.semanticColors.verifiedContainer
 }
 
 internal data class PhonebookContact(

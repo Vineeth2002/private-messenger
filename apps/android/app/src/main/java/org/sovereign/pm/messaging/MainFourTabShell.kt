@@ -111,6 +111,7 @@ import java.util.concurrent.TimeUnit
 @Composable
 internal fun MainFourTabHomeScreen(
     simpleEasyMode: Boolean = false,
+    alphaOnlyMode: Boolean = true,
     activeTab: BottomNavTab,
     onSelectTab: (BottomNavTab) -> Unit,
     overflowMenuOpen: Boolean,
@@ -340,7 +341,11 @@ internal fun MainFourTabHomeScreen(
                     horizontalArrangement = Arrangement.SpaceAround,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    val visibleTabs = if (simpleEasyMode) listOf(BottomNavTab.CHATS, BottomNavTab.CALLS) else BottomNavTab.entries
+                    val visibleTabs = when {
+                        alphaOnlyMode -> listOf(BottomNavTab.CHATS)
+                        simpleEasyMode -> listOf(BottomNavTab.CHATS, BottomNavTab.CALLS)
+                        else -> BottomNavTab.entries
+                    }
                     visibleTabs.forEach { tab ->
                         val selected = activeTab == tab
                         Column(

@@ -18,6 +18,7 @@ import java.util.Locale
     val envelopeId: String,
     val recipientDeviceId: String,
     val expiresAt: String,
+    val deduplicated: Boolean = false,
 )
 
 data class FetchedDeviceMessage(
@@ -124,7 +125,8 @@ class DeviceMessageHttpClient(
         require(isUuid(recipientDeviceId)) { "Gateway returned an invalid recipient device ID" }
         requireValidTimestamp(expiresAt)
 
-        return DeviceMessageSendReceipt(envelopeId, recipientDeviceId, expiresAt)
+        val deduplicated = json.optBoolean("deduplicated", false)
+        return DeviceMessageSendReceipt(envelopeId, recipientDeviceId, expiresAt, deduplicated)
     }
 
     /** Fetches messages addressed to this local device identity. */

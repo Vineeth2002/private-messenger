@@ -221,6 +221,8 @@ func serveDemoMessageSend(w http.ResponseWriter, r *http.Request, delivery Messa
 			writeMessageError(w, http.StatusForbidden, "ERR_SENDER_DEVICE_IDENTITY_MISMATCH")
 		case errors.Is(err, messages.ErrRecipientEpochMismatch):
 			writeMessageError(w, http.StatusConflict, "ERR_RECIPIENT_EPOCH_MISMATCH")
+		case errors.Is(err, messages.ErrEnvelopeConflict):
+			writeMessageError(w, http.StatusConflict, "ERR_ENVELOPE_CONFLICT")
 		case errors.Is(err, messages.ErrInvalidMessageEnvelope), errors.Is(err, messages.ErrInvalidMessageEnvelopeField), errors.Is(err, messages.ErrNonCanonicalMessageEnvelope):
 			writeMessageError(w, http.StatusBadRequest, "ERR_INVALID_MESSAGE_ENVELOPE")
 		default:
@@ -229,13 +231,18 @@ func serveDemoMessageSend(w http.ResponseWriter, r *http.Request, delivery Messa
 		return
 	}
 
+	responseExpiresAt := expiresAt
+	if !enqueued.ExpiresAt.IsZero() {
+		responseExpiresAt = enqueued.ExpiresAt.UTC()
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"envelope_id":         envelopeIDString(enqueued.Envelope.EnvelopeID),
 		"recipient_device_id": envelopeIDString(enqueued.Envelope.RecipientDeviceID),
 		"created_at":          enqueued.CreatedAt.UTC().Format(time.RFC3339Nano),
-		"expires_at":          expiresAt.Format(time.RFC3339Nano),
+		"expires_at":          responseExpiresAt.Format(time.RFC3339Nano),
+		"deduplicated":        enqueued.Deduplicated,
 	})
 }
 

@@ -336,6 +336,49 @@ internal class PersistentMessagingEngine(
      * Makes one non-retryable network attempt for the oldest READY item. The ATTEMPTING marker is
      * committed before the HTTP request; any ambiguous outcome becomes DELIVERY_UNKNOWN.
      */
+
+    fun reconcileDeliveryUnknownOutbox(
+        client: DeviceMessageHttpClient,
+        maxAttempts: Int = 5,
+    ): Int = synchronized(operationLock) {
+        var reconciled = 0
+        val items = database.listDeliveryUnknownOutbox(maxAttempts = maxAttempts)
+        for (item in items) {
+            try {
+                if (!database.beginRetryOutboxAttempt(item.localMessageId, System.currentTimeMillis())) {
+                    continue
+                }
+                val storedMessage = database.getMessage(item.localMessageId) ?: continue
+                val session = database.getSession(storedMessage.sessionId) ?: continue
+                val receipt = client.sendEnvelope(item.envelopeWire)
+                val expectedRecipient = uuidFromBytes(session.peerDeviceId)
+                if (receipt.recipientDeviceId.equals(expectedRecipient, ignoreCase = true)) {
+                    database.markOutboxSubmitted(
+                        item.localMessageId,
+                        receipt.envelopeId,
+                        System.currentTimeMillis(),
+                    )
+                    reconciled++
+                } else {
+                    database.markOutboxDeliveryUnknown(
+                        item.localMessageId,
+                        "RECIPIENT_MISMATCH",
+                        System.currentTimeMillis(),
+                    )
+                }
+            } catch (failure: Exception) {
+                database.markOutboxDeliveryUnknown(
+                    item.localMessageId,
+                    safeErrorCode(failure),
+                    System.currentTimeMillis(),
+                )
+            } finally {
+                item.envelopeWire.fill(0)
+            }
+        }
+        reconciled
+    }
+
     fun submitNextReadyOutbox(client: DeviceMessageHttpClient): OutboxSubmission? =
         synchronized(operationLock) {
             val item = database.listReadyOutbox(limit = 1).firstOrNull() ?: return null
