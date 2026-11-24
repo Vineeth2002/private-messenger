@@ -492,7 +492,7 @@ internal class LocalMessagingDatabase(
                     ReadyOutboxMessage(
                         localMessageId = cursor.getString(0),
                         envelopeWire = cursor.getBlob(1),
-                        attemptCount = cursor.getInt(2),
+                        attemptCount = cursor.getLong(2),
                     ),
                 )
             }
