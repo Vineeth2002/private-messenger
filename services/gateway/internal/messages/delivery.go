@@ -25,6 +25,7 @@ var (
 	ErrAuthenticatedEpochMismatch   = errors.New("authenticated device epoch is stale")
 	ErrAuthenticatedDeviceState     = errors.New("authenticated device state is inconsistent")
 	ErrEnvelopeNotFound             = errors.New("message envelope not found")
+	ErrEnvelopeConflict = errors.New("message envelope id conflicts with existing envelope")
 )
 
 // AuthenticatedDevice is the identity established by the request-auth layer.

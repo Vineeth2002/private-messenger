@@ -478,7 +478,7 @@ internal class LocalMessagingDatabase(
         val items = mutableListOf<ReadyOutboxMessage>()
         db.rawQuery(
             """
-            SELECT o.local_message_id, m.envelope_wire
+            SELECT o.local_message_id, m.envelope_wire, o.attempt_count
             FROM outbox o
             INNER JOIN messages m ON m.local_message_id = o.local_message_id
             WHERE o.state = 'DELIVERY_UNKNOWN' AND o.attempt_count < ?
@@ -492,6 +492,7 @@ internal class LocalMessagingDatabase(
                     ReadyOutboxMessage(
                         localMessageId = cursor.getString(0),
                         envelopeWire = cursor.getBlob(1),
+                        attemptCount = cursor.getInt(2),
                     ),
                 )
             }
