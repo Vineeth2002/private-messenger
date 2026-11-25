@@ -479,7 +479,9 @@ class MainActivity : ComponentActivity() {
     private fun disableDebugScreenMirroring() {
         mainHandler.removeCallbacks(debugMirrorTimeout)
         debugMirrorEnabled = false
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        if (!isDebuggableBuild()) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
     }
 
     override fun onResume() {

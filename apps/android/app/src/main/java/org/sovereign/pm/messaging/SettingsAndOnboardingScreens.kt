@@ -1,5 +1,7 @@
 package org.sovereign.pm.messaging
 
+import androidx.activity.compose.BackHandler
+
 import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -1105,6 +1107,11 @@ internal fun QuickSimOnboardingScreen(
     var displayNameInput by remember { mutableStateOf("") }
     var otpInput by remember { mutableStateOf("") }
     var otpSent by remember { mutableStateOf(false) }
+    BackHandler(enabled = otpSent) {
+        otpSent = false
+        otpInput = ""
+        errorText = null
+    }
     var errorText by remember { mutableStateOf<String?>(null) }
 
     val hasPhonePerm = androidx.core.content.ContextCompat.checkSelfPermission(

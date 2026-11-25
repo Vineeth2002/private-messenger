@@ -1,5 +1,7 @@
 package org.sovereign.pm.messaging
 
+import androidx.activity.compose.BackHandler
+
 import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -164,6 +166,11 @@ internal fun AlphaMessengerWorkspace(
                 phonebookContacts = loaded
                 discoveredMatches = matches
                 isDiscoveringContacts = false
+                statusMessage = if (loaded.isEmpty()) {
+                    "No phone contacts found on device."
+                } else {
+                    "Synced ${loaded.size} device contacts (${matches.size} on gateway)."
+                }
             }
         }
     }
@@ -649,6 +656,37 @@ internal fun AlphaMessengerWorkspace(
     }
     var activeTab by remember { mutableStateOf(BottomNavTab.CHATS) }
     var currentScreen by remember { mutableStateOf(AppScreen.HOME) }
+    BackHandler(enabled = currentScreen != AppScreen.HOME) {
+        currentScreen = when (currentScreen) {
+            AppScreen.CHAT_INFO -> AppScreen.CONVERSATION
+            AppScreen.NEW_GROUP_DETAILS -> AppScreen.NEW_GROUP_SELECT
+            AppScreen.NEW_COMMUNITY_DETAILS -> AppScreen.NEW_COMMUNITY_INTRO
+            AppScreen.SETTINGS_ACCOUNT_SECURITY,
+            AppScreen.SETTINGS_ACCOUNT_TWO_STEP,
+            AppScreen.SETTINGS_ACCOUNT_CHANGE_NUMBER,
+            AppScreen.SETTINGS_ACCOUNT_REQUEST_INFO,
+            AppScreen.SETTINGS_ACCOUNT_DELETE -> AppScreen.SETTINGS_ACCOUNT
+            AppScreen.SETTINGS_PRIVACY_OPTION -> AppScreen.SETTINGS_PRIVACY
+            AppScreen.SETTINGS_CHATS_HISTORY -> AppScreen.SETTINGS_CHATS
+            AppScreen.SETTINGS_HELP_FAQ,
+            AppScreen.SETTINGS_HELP_CONTACT,
+            AppScreen.SETTINGS_HELP_APP_INFO -> AppScreen.SETTINGS_HELP
+            AppScreen.SETTINGS_PROFILE,
+            AppScreen.SETTINGS_ACCOUNT,
+            AppScreen.SETTINGS_PRIVACY,
+            AppScreen.SETTINGS_CHATS,
+            AppScreen.SETTINGS_NOTIFICATIONS,
+            AppScreen.SETTINGS_STORAGE,
+            AppScreen.SETTINGS_LANGUAGE,
+            AppScreen.SETTINGS_HELP -> AppScreen.SETTINGS_HOME
+            else -> {
+                isSelfNoteOpen = false
+                activeRichThreadId = null
+                AppScreen.HOME
+            }
+        }
+    }
+
     var experienceConfig by remember(userPhoneKey) {
         mutableStateOf(loadAdaptiveExperienceConfig(suitePrefs))
     }
@@ -685,17 +723,7 @@ internal fun AlphaMessengerWorkspace(
 
     // Individual Saved Notes per user account
     var selfNotes by remember(userPhoneKey) {
-        mutableStateOf(
-            listOf(
-                MessengerMessage(
-                    localMessageId = "welcome_note_$userPhoneKey",
-                    direction = StoredMessageDirection.INBOUND,
-                    body = "Your personal space for notes, links, and instant translation. Tap 'Read in:' above to read or listen in Telugu, Gujarati, Hindi, Tamil, or English.",
-                    createdAtMillis = System.currentTimeMillis(),
-                    outboxStatus = OutboxMessageStatus.SUBMITTED,
-                ),
-            ) + loadSavedSelfNotesForUser(suitePrefs, userPhoneKey),
-        )
+        mutableStateOf(loadSavedSelfNotesForUser(suitePrefs, userPhoneKey))
     }
     var isSelfNoteOpen by remember { mutableStateOf(false) }
 
@@ -725,59 +753,11 @@ internal fun AlphaMessengerWorkspace(
     }
 
     var statusStories by remember(userPhoneKey) {
-        mutableStateOf(
-            loadStatusStories(suitePrefs).ifEmpty {
-                listOf(
-                    StatusStoryItem(
-                        id = "st_sample_1",
-                        authorName = "Regional Trade Desk",
-                        text = "Morning market rates updated in Telugu, Gujarati & Hindi.",
-                        timestampMillis = System.currentTimeMillis() - 3600_000L,
-                        bgColorHex = 0xFF283593,
-                    ),
-                )
-            },
-        )
+        mutableStateOf(loadStatusStories(suitePrefs))
     }
     var activeStatusStory by remember { mutableStateOf<StatusStoryItem?>(null) }
     var channels by remember(userPhoneKey) {
-        mutableStateOf(
-            loadChannels(suitePrefs).ifEmpty {
-                listOf(
-                    ChannelItem(
-                        id = "ch_civic",
-                        name = "AP & Telangana Civic Updates",
-                        followersLabel = "48.2K followers",
-                        verified = true,
-                        followed = true,
-                        posts = listOf(
-                            "Monsoon readiness & municipal helpline numbers updated for Visakhapatnam and Hyderabad.",
-                            "Digital citizen portal maintenance window scheduled tonight from 11:30 PM to 1:00 AM.",
-                        ),
-                    ),
-                    ChannelItem(
-                        id = "ch_agri",
-                        name = "India Mandi & Commodity Pulse",
-                        followersLabel = "92.5K followers",
-                        verified = true,
-                        followed = false,
-                        posts = listOf(
-                            "Turmeric, chilli, and cotton arrivals steady across Guntur, Rajkot, and Indore mandis.",
-                        ),
-                    ),
-                    ChannelItem(
-                        id = "ch_tech",
-                        name = "Cyber Safety India",
-                        followersLabel = "64.0K followers",
-                        verified = true,
-                        followed = false,
-                        posts = listOf(
-                            "Never share your 6-digit verification code or SIM slot PIN with anyone claiming to be support.",
-                        ),
-                    ),
-                )
-            },
-        )
+        mutableStateOf(loadChannels(suitePrefs))
     }
     var activeChannelId by remember { mutableStateOf<String?>(null) }
 
