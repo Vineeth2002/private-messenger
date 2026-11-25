@@ -1107,12 +1107,12 @@ internal fun QuickSimOnboardingScreen(
     var displayNameInput by remember { mutableStateOf("") }
     var otpInput by remember { mutableStateOf("") }
     var otpSent by remember { mutableStateOf(false) }
+    var errorText by remember { mutableStateOf<String?>(null) }
     BackHandler(enabled = otpSent) {
         otpSent = false
         otpInput = ""
         errorText = null
     }
-    var errorText by remember { mutableStateOf<String?>(null) }
 
     val hasPhonePerm = androidx.core.content.ContextCompat.checkSelfPermission(
         context,

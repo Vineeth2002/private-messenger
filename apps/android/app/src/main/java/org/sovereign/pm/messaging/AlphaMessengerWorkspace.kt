@@ -151,6 +151,8 @@ internal fun AlphaMessengerWorkspace(
     var discoveredMatches by remember { mutableStateOf<Map<String, DiscoveredPeerMatch>>(emptyMap()) }
     var isDiscoveringContacts by remember { mutableStateOf(false) }
 
+    var statusMessage by remember { mutableStateOf<String?>(null) }
+
     fun syncPhoneAndEmailContacts() {
         isDiscoveringContacts = true
         worker.execute {
@@ -175,7 +177,6 @@ internal fun AlphaMessengerWorkspace(
         }
     }
 
-    var statusMessage by remember { mutableStateOf<String?>(null) }
     val contactsPermLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -656,37 +657,6 @@ internal fun AlphaMessengerWorkspace(
     }
     var activeTab by remember { mutableStateOf(BottomNavTab.CHATS) }
     var currentScreen by remember { mutableStateOf(AppScreen.HOME) }
-    BackHandler(enabled = currentScreen != AppScreen.HOME) {
-        currentScreen = when (currentScreen) {
-            AppScreen.CHAT_INFO -> AppScreen.CONVERSATION
-            AppScreen.NEW_GROUP_DETAILS -> AppScreen.NEW_GROUP_SELECT
-            AppScreen.NEW_COMMUNITY_DETAILS -> AppScreen.NEW_COMMUNITY_INTRO
-            AppScreen.SETTINGS_ACCOUNT_SECURITY,
-            AppScreen.SETTINGS_ACCOUNT_TWO_STEP,
-            AppScreen.SETTINGS_ACCOUNT_CHANGE_NUMBER,
-            AppScreen.SETTINGS_ACCOUNT_REQUEST_INFO,
-            AppScreen.SETTINGS_ACCOUNT_DELETE -> AppScreen.SETTINGS_ACCOUNT
-            AppScreen.SETTINGS_PRIVACY_OPTION -> AppScreen.SETTINGS_PRIVACY
-            AppScreen.SETTINGS_CHATS_HISTORY -> AppScreen.SETTINGS_CHATS
-            AppScreen.SETTINGS_HELP_FAQ,
-            AppScreen.SETTINGS_HELP_CONTACT,
-            AppScreen.SETTINGS_HELP_APP_INFO -> AppScreen.SETTINGS_HELP
-            AppScreen.SETTINGS_PROFILE,
-            AppScreen.SETTINGS_ACCOUNT,
-            AppScreen.SETTINGS_PRIVACY,
-            AppScreen.SETTINGS_CHATS,
-            AppScreen.SETTINGS_NOTIFICATIONS,
-            AppScreen.SETTINGS_STORAGE,
-            AppScreen.SETTINGS_LANGUAGE,
-            AppScreen.SETTINGS_HELP -> AppScreen.SETTINGS_HOME
-            else -> {
-                isSelfNoteOpen = false
-                activeRichThreadId = null
-                AppScreen.HOME
-            }
-        }
-    }
-
     var experienceConfig by remember(userPhoneKey) {
         mutableStateOf(loadAdaptiveExperienceConfig(suitePrefs))
     }
@@ -731,6 +701,37 @@ internal fun AlphaMessengerWorkspace(
         mutableStateOf(loadRichThreads(suitePrefs))
     }
     var activeRichThreadId by remember { mutableStateOf<String?>(null) }
+
+    BackHandler(enabled = currentScreen != AppScreen.HOME) {
+        currentScreen = when (currentScreen) {
+            AppScreen.CHAT_INFO -> AppScreen.CONVERSATION
+            AppScreen.NEW_GROUP_DETAILS -> AppScreen.NEW_GROUP_SELECT
+            AppScreen.NEW_COMMUNITY_DETAILS -> AppScreen.NEW_COMMUNITY_INTRO
+            AppScreen.SETTINGS_ACCOUNT_SECURITY,
+            AppScreen.SETTINGS_ACCOUNT_TWO_STEP,
+            AppScreen.SETTINGS_ACCOUNT_CHANGE_NUMBER,
+            AppScreen.SETTINGS_ACCOUNT_REQUEST_INFO,
+            AppScreen.SETTINGS_ACCOUNT_DELETE -> AppScreen.SETTINGS_ACCOUNT
+            AppScreen.SETTINGS_PRIVACY_OPTION -> AppScreen.SETTINGS_PRIVACY
+            AppScreen.SETTINGS_CHATS_HISTORY -> AppScreen.SETTINGS_CHATS
+            AppScreen.SETTINGS_HELP_FAQ,
+            AppScreen.SETTINGS_HELP_CONTACT,
+            AppScreen.SETTINGS_HELP_APP_INFO -> AppScreen.SETTINGS_HELP
+            AppScreen.SETTINGS_PROFILE,
+            AppScreen.SETTINGS_ACCOUNT,
+            AppScreen.SETTINGS_PRIVACY,
+            AppScreen.SETTINGS_CHATS,
+            AppScreen.SETTINGS_NOTIFICATIONS,
+            AppScreen.SETTINGS_STORAGE,
+            AppScreen.SETTINGS_LANGUAGE,
+            AppScreen.SETTINGS_HELP -> AppScreen.SETTINGS_HOME
+            else -> {
+                isSelfNoteOpen = false
+                activeRichThreadId = null
+                AppScreen.HOME
+            }
+        }
+    }
 
     var starredMessageIds by remember(userPhoneKey) {
         mutableStateOf(suitePrefs.getStringSet("starred_ids", emptySet()).orEmpty())
