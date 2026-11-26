@@ -82,7 +82,7 @@ jobs:
           openssl x509 -in "$CA_DIR/dev_gateway_ca.pem" -noout -subject
       - name: Run Android unit tests and assemble debug APK
         working-directory: apps/android
-        run: bash gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
+        run: bash gradlew --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug
 
       - name: Enable KVM for the emulator
         shell: bash
