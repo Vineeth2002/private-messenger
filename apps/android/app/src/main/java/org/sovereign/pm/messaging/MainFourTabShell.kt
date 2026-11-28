@@ -1,5 +1,7 @@
 package org.sovereign.pm.messaging
 
+import androidx.compose.foundation.layout.statusBarsPadding
+
 import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -156,7 +158,8 @@ internal fun MainFourTabHomeScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .statusBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Row(
