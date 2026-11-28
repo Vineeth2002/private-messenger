@@ -1,5 +1,7 @@
 package org.sovereign.pm
 
+import androidx.activity.compose.BackHandler
+
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -95,6 +97,7 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background,
                 ) {
                     var showEntrySplash by remember { mutableStateOf(true) }
+                    BackHandler(enabled = showGatewaySettings) { showGatewaySettings = false }
                     if (showEntrySplash) {
                         OpeningEntrySplash(onFinished = { showEntrySplash = false })
                     } else if (!showGatewaySettings) {
