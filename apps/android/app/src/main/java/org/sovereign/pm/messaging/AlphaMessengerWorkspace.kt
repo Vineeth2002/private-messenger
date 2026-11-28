@@ -918,10 +918,9 @@ internal fun AlphaMessengerWorkspace(
 
     when {
         hidePrivateContent -> PrivacyMirrorNotice(onOpenSettings = onOpenSettings)
-        activeSim == null -> QuickSimOnboardingScreen(
+        activeSim == null -> EmailAuthOnboardingScreen(
             context = appContext,
             simPrefs = simPrefs,
-            onRequestPhonePermission = { phonePermLauncher.launch(Manifest.permission.READ_PHONE_STATE) },
             onCompleted = { simRefreshTick += 1 },
         )
         !activeSim.isSimPresentAndMatching -> SimBindingLockScreen(

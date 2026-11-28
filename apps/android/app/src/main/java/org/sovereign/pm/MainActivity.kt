@@ -42,6 +42,7 @@ import org.sovereign.pm.messaging.AlphaMessengerWorkspace
 import org.sovereign.pm.messaging.DeviceDirectoryHttpClient
 import org.sovereign.pm.security.AndroidKeystorePlatformKek
 import org.sovereign.pm.security.IdentityStore
+import org.sovereign.pm.ui.OpeningEntrySplash
 import org.sovereign.pm.ui.theme.SovereignTheme
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -76,7 +77,7 @@ class MainActivity : ComponentActivity() {
             var gatewayOrigin by remember {
                 mutableStateOf(
                     applicationContext.getSharedPreferences("pm-ui-settings-v1", MODE_PRIVATE)
-                        .getString("gateway_origin", "").orEmpty(),
+                        .getString("gateway_origin", "https://pm-gateway-dev.onrender.com").orEmpty().ifBlank { "https://pm-gateway-dev.onrender.com" },
                 )
             }
             var isVerifying by remember { mutableStateOf(false) }
@@ -93,7 +94,10 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    if (!showGatewaySettings) {
+                    var showEntrySplash by remember { mutableStateOf(true) }
+                    if (showEntrySplash) {
+                        OpeningEntrySplash(onFinished = { showEntrySplash = false })
+                    } else if (!showGatewaySettings) {
                         AlphaMessengerWorkspace(
                             context = applicationContext,
                             identityStore = identityStore,
