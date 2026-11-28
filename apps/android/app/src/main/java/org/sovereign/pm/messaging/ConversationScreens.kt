@@ -1,5 +1,8 @@
 package org.sovereign.pm.messaging
 
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.MaterialTheme
+
 import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -396,22 +399,22 @@ internal fun RichConversationScreen(
                                     lensState!!.translatedText!!,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = if (outgoing) Color.White else SovereignSlatePalette.TextPrimary,
+                                    color = if (outgoing) MaterialTheme.colorScheme.onPrimary else SovereignSlatePalette.TextPrimary,
                                 )
                                 HorizontalDivider(
                                     thickness = 0.6.dp,
-                                    color = if (outgoing) Color.White.copy(alpha = 0.22f) else SovereignSlatePalette.Hairline,
+                                    color = if (outgoing) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.22f) else SovereignSlatePalette.Hairline,
                                 )
                                 Text(
                                     "Original: ${msg.body}",
                                     fontSize = 12.sp,
-                                    color = if (outgoing) Color.White.copy(alpha = 0.78f) else SovereignSlatePalette.TextSecondary,
+                                    color = if (outgoing) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f) else SovereignSlatePalette.TextSecondary,
                                 )
                             } else {
                                 Text(
                                     msg.body,
                                     fontSize = 15.sp,
-                                    color = if (outgoing) Color.White else SovereignSlatePalette.TextPrimary,
+                                    color = if (outgoing) MaterialTheme.colorScheme.onPrimary else SovereignSlatePalette.TextPrimary,
                                 )
                             }
 
@@ -458,7 +461,7 @@ internal fun RichConversationScreen(
                                 Text(
                                     DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(msg.createdAtMillis)),
                                     fontSize = 11.sp,
-                                    color = if (outgoing) Color.White.copy(alpha = 0.78f) else SovereignSlatePalette.TextSecondary,
+                                    color = if (outgoing) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f) else SovereignSlatePalette.TextSecondary,
                                 )
                             }
 
@@ -495,7 +498,7 @@ internal fun RichConversationScreen(
                                             Text(
                                                 sumState!!.summaryText!!,
                                                 fontSize = 13.sp,
-                                                color = if (outgoing) Color.White else SovereignSlatePalette.TextPrimary,
+                                                color = if (outgoing) MaterialTheme.colorScheme.onPrimary else SovereignSlatePalette.TextPrimary,
                                             )
                                             Surface(
                                                 shape = CircleShape,

@@ -1199,7 +1199,29 @@ internal fun AlphaMessengerWorkspace(
                 selectedMemberNames = emptySet()
                 currentScreen = AppScreen.NEW_BROADCAST_SELECT
             },
-            onStartDirectChat = { name, phone -> openOrCreateRichThread(name, phone, ThreadKind.DIRECT) },
+            onStartDirectChat = { name, phone ->
+            val digits = phone.filter { it.isDigit() }.takeLast(10)
+            val isRegistered = discoveredMatches.keys.any { k ->
+                k.filter { ch -> ch.isDigit() }.takeLast(10) == digits && digits.isNotEmpty()
+            }
+            if (isRegistered) {
+                openOrCreateRichThread(name, phone, ThreadKind.DIRECT)
+            } else {
+                statusMessage = "$name is not registered on Sovereign PM yet. Send them an invite first."
+                val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(
+                        android.content.Intent.EXTRA_TEXT,
+                        "Join me on Sovereign Private Messenger (India-hosted E2EE alpha): https://github.com/Vineeth2002/private-messenger",
+                    )
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                appContext.startActivity(
+                    android.content.Intent.createChooser(share, "Invite $name to Sovereign PM")
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        },
             onShareInvite = {
                 val shareBody = "Let's chat privately in Telugu, Gujarati, Hindi, Tamil or English:\nhttps://sovereignpm.in/connect?invite=${URLEncoder.encode(myPairingCode.ifBlank { activeSim.boundPhoneNumber }, "UTF-8")}"
                 val sendIntent = Intent(Intent.ACTION_SEND).apply {

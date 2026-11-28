@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <application android:usesCleartextTraffic="true" android:label="Sovereign PM" android:allowBackup="false" android:networkSecurityConfig="@xml/network_security_config"
+    <application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="true" android:label="Sovereign PM" android:allowBackup="false" android:networkSecurityConfig="@xml/network_security_config"
         android:dataExtractionRules="@xml/data_extraction_rules">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
