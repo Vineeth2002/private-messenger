@@ -1223,9 +1223,44 @@ internal fun QuickSimOnboardingScreen(
                                 if (!hasPhonePerm) {
                                     onRequestPhonePermission()
                                 }
-                                otpInput = (100000..999999).random().toString()
+                                if (isSendingOtp) return@Button
+                        if (FirebaseApp.getApps(context).isEmpty() || hostActivity == null) {
+                            errorText = "Firebase Phone Auth is not configured on this build."
+                            return@Button
+                        }
+                        isSendingOtp = true
+                        errorText = null
+                        val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
+                            override fun onVerificationCompleted(credential: PhoneAuthCredential) {
+                                FirebaseAuth.getInstance().signInWithCredential(credential)
+                                    .addOnSuccessListener {
+                                        isSendingOtp = false
+                                        completeOnboarding()
+                                    }
+                                    .addOnFailureListener { e ->
+                                        isSendingOtp = false
+                                        errorText = e.localizedMessage ?: "Auto-verification failed."
+                                    }
+                            }
+                            override fun onVerificationFailed(e: FirebaseException) {
+                                isSendingOtp = false
+                                errorText = e.localizedMessage ?: "Failed to send SMS OTP."
+                            }
+                            override fun onCodeSent(vId: String, token: PhoneAuthProvider.ForceResendingToken) {
+                                verificationId = vId
+                                otpInput = ""
                                 otpSent = true
+                                isSendingOtp = false
                                 errorText = null
+                            }
+                        }
+                        val options = PhoneAuthOptions.newBuilder(FirebaseAuth.getInstance())
+                            .setPhoneNumber("+91$phoneInput")
+                            .setTimeout(60L, TimeUnit.SECONDS)
+                            .setActivity(hostActivity)
+                            .setCallbacks(callbacks)
+                            .build()
+                        PhoneAuthProvider.verifyPhoneNumber(options)
                             },
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(
