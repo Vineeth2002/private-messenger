@@ -4,6 +4,15 @@ plugins {
 }
 
 android {
+
+    testOptions {
+        unitTests.all {
+            it.systemProperty(
+                "robolectric.dependency.repo.url",
+                "https://maven-central.storage-download.googleapis.com/maven2",
+            )
+        }
+    }
     namespace = "org.sovereign.pm"
     compileSdk = 36
 
