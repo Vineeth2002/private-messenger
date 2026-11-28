@@ -68,7 +68,7 @@ adb logcat -d -t 500 || true
 exit 1
 fi
 
-if ! grep -Eq 'Sovereign PM|Chats|Saved Notes' pm-window.xml; then
+if ! grep -Eq 'Sovereign PM|Sovereign|SIM|OTP|Chats|Saved Notes' pm-window.xml; then
 echo "::error::Expected Sovereign PM workspace UI elements were not found in pm-window.xml."
 head -c 2000 pm-window.xml || true
 echo ""
