@@ -55,6 +55,8 @@ android {
 }
 
 dependencies {
+    implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
+    implementation("com.google.firebase:firebase-auth")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     testImplementation("androidx.work:work-testing:2.9.1")
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))
@@ -70,4 +72,8 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
 
     // FCM + native crypto-core (UniFFI) are added when their boundaries unlock.
+}
+
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }

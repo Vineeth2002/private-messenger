@@ -1,5 +1,15 @@
 package org.sovereign.pm.messaging
 
+import android.app.Activity
+import androidx.compose.ui.platform.LocalContext
+import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseException
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.PhoneAuthCredential
+import com.google.firebase.auth.PhoneAuthOptions
+import com.google.firebase.auth.PhoneAuthProvider
+import java.util.concurrent.TimeUnit
+
 import androidx.activity.compose.BackHandler
 
 import android.Manifest
@@ -103,7 +113,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.TimeUnit
 
 
 // ============================================================================
@@ -1108,6 +1117,11 @@ internal fun QuickSimOnboardingScreen(
     var otpInput by remember { mutableStateOf("") }
     var otpSent by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
+    var verificationId by remember { mutableStateOf<String?>(null) }
+    var isSendingOtp by remember { mutableStateOf(false) }
+    var isVerifyingOtp by remember { mutableStateOf(false) }
+    val hostActivity = LocalContext.current as? Activity
+
     BackHandler(enabled = otpSent) {
         otpSent = false
         otpInput = ""
@@ -1121,6 +1135,23 @@ internal fun QuickSimOnboardingScreen(
 
     val tm = remember(context) { context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager }
     val simReady = tm?.simState == TelephonyManager.SIM_STATE_READY
+
+    fun completeOnboarding() {
+        val subManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? SubscriptionManager
+        val activeSub = if (hasPhonePerm) {
+            runCatching { subManager?.activeSubscriptionInfoList?.firstOrNull() }.getOrNull()
+        } else null
+        val isPhysicalSimBound = simReady && activeSub != null
+        val formattedPhone = "+91 $phoneInput"
+        simPrefs.edit()
+            .putString("registered_phone", formattedPhone)
+            .putString("user_display_name", displayNameInput.trim())
+            .putInt("bound_sim_sub_id", activeSub?.subscriptionId ?: -1)
+            .putString("bound_sim_carrier", activeSub?.carrierName?.toString() ?: "Mobile SIM")
+            .putBoolean("sim_binding_test_bypass", !isPhysicalSimBound)
+            .apply()
+        onCompleted()
+    }
 
     Scaffold(containerColor = SovereignSlatePalette.PageCanvas) { padding ->
         Column(
@@ -1237,24 +1268,27 @@ internal fun QuickSimOnboardingScreen(
                         Button(
                             onClick = {
                                 if (otpInput.length != 6) {
-                                    errorText = "Enter the 6-digit verification code."
-                                    return@Button
-                                }
-                                val subManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? SubscriptionManager
-                                val activeSub = if (hasPhonePerm) {
-                                    runCatching { subManager?.activeSubscriptionInfoList?.firstOrNull() }.getOrNull()
-                                } else null
-
-                                val isPhysicalSimBound = simReady && activeSub != null
-                                val formattedPhone = "+91 $phoneInput"
-                                simPrefs.edit()
-                                    .putString("registered_phone", formattedPhone)
-                                    .putString("user_display_name", displayNameInput.trim())
-                                    .putInt("bound_sim_sub_id", activeSub?.subscriptionId ?: -1)
-                                    .putString("bound_sim_carrier", activeSub?.carrierName?.toString() ?: "Mobile SIM")
-                                    .putBoolean("sim_binding_test_bypass", !isPhysicalSimBound)
-                                    .apply()
-                                onCompleted()
+                    errorText = "Enter the 6-digit SMS verification code."
+                    return@Button
+                }
+                val vId = verificationId
+                if (vId.isNullOrBlank()) {
+                    errorText = "OTP session expired. Tap Back and request a new code."
+                    return@Button
+                }
+                if (isVerifyingOtp) return@Button
+                isVerifyingOtp = true
+                errorText = null
+                val credential = PhoneAuthProvider.getCredential(vId, otpInput)
+                FirebaseAuth.getInstance().signInWithCredential(credential)
+                    .addOnSuccessListener {
+                        isVerifyingOtp = false
+                        completeOnboarding()
+                    }
+                    .addOnFailureListener { e ->
+                        isVerifyingOtp = false
+                        errorText = e.localizedMessage ?: "Invalid OTP code. Please try again."
+                    }
                             },
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(
